@@ -1,0 +1,335 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage x:Class="PixFrameWorkspace.MainPage"
+             xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:local="clr-namespace:PixFrameWorkspace"
+             Title="Kundenverwaltung">
+
+    <Grid ColumnDefinitions="400,*" ColumnSpacing="10" RowDefinitions="*,Auto">
+
+        <!-- LINKE SEITE: Suchleiste und Kundenliste (unverändert) -->
+        <Grid Grid.Column="0" Grid.Row="0" RowDefinitions="Auto,Auto,*,Auto" RowSpacing="10" Padding="10">
+
+            <!-- Suchleiste -->
+            <VerticalStackLayout Grid.Row="0" Spacing="5">
+                <Label Text="Kunden suchen:" FontSize="16" FontAttributes="Bold" />
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="5">
+                    <Entry x:Name="SearchEntry" 
+                           Placeholder="Name, Firma, Ort..." 
+                           TextChanged="OnSearchTextChanged"
+                           Grid.Column="0" />
+                    <Button Text="X" 
+                            Clicked="OnClearSearchClicked"
+                            Grid.Column="1"
+                            WidthRequest="40"
+                            BackgroundColor="LightGray" />
+                </Grid>
+            </VerticalStackLayout>
+
+            <!-- Kundenanzahl -->
+            <Label x:Name="CustomerCountLabel" 
+                   Grid.Row="1"
+                   Text="0 Kunden gefunden" 
+                   FontSize="12" 
+                   TextColor="Gray" />
+
+            <!-- Kundenliste -->
+            <VerticalStackLayout Grid.Row="2" Spacing="5">
+                <Label Text="Kundenliste:" FontSize="16" FontAttributes="Bold" />
+
+                <ListView x:Name="CustomersListView"
+                          ItemsSource="{Binding Customers}"
+                          SelectionMode="Single"
+                          ItemSelected="OnCustomerSelected"
+                          HasUnevenRows="True"
+                          BackgroundColor="White"
+                          VerticalOptions="FillAndExpand"
+                          Margin="0,5,0,0">
+                    <ListView.ItemTemplate>
+                        <DataTemplate x:DataType="local:Customer">
+                            <ViewCell>
+                                <Grid Padding="10" ColumnDefinitions="Auto,*" ColumnSpacing="10" BackgroundColor="White">
+                                    <Label Grid.Column="0" 
+                                           Text="{Binding CustomerNumber}" 
+                                           FontSize="14" 
+                                           FontAttributes="Bold"
+                                           TextColor="DarkBlue"
+                                           VerticalOptions="Center" />
+                                    <VerticalStackLayout Grid.Column="1">
+                                        <Label Text="{Binding DisplayName}" 
+                                               FontSize="14" 
+                                               LineBreakMode="TailTruncation" />
+                                        <Label Text="{Binding FullAddress}" 
+                                               FontSize="12" 
+                                               TextColor="Gray"
+                                               LineBreakMode="TailTruncation" />
+                                        <Label Text="{Binding Email}" 
+                                               FontSize="12" 
+                                               TextColor="Gray"
+                                               LineBreakMode="TailTruncation" />
+                                    </VerticalStackLayout>
+                                </Grid>
+                            </ViewCell>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+            </VerticalStackLayout>
+
+            <!-- Statusinformation unten -->
+            <Label Grid.Row="3"
+                   Text="💡 Tipp: Klicken Sie auf einen Kunden zum Bearbeiten"
+                   FontSize="12"
+                   TextColor="Gray"
+                   HorizontalOptions="Center"
+                   Margin="0,10,0,0" />
+
+        </Grid>
+
+        <!-- RECHTE SEITE: Kompakteres Eingabeformular -->
+        <ScrollView Grid.Column="1" Grid.Row="0">
+            <VerticalStackLayout Spacing="12" Padding="15" VerticalOptions="Start">
+
+                <!-- Kundennummer kompakt in einer Zeile -->
+                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10" VerticalOptions="Center">
+                    <Label Text="Kundennummer:"
+                           FontSize="14"
+                           FontAttributes="Bold"
+                           VerticalOptions="Center"
+                           Grid.Column="0" />
+                    <Label x:Name="CustomerNumberLabel"
+                           Text="1000"
+                           FontSize="14"
+                           FontAttributes="Bold"
+                           TextColor="DarkBlue"
+                           VerticalOptions="Center"
+                           Grid.Column="1" />
+                </Grid>
+
+                <!-- Persönliche Daten kompakt -->
+                <Frame BackgroundColor="#F8F9FA" Padding="12" HasShadow="False">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="Persönliche Daten" FontSize="12" FontAttributes="Bold" />
+
+                        <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                            <VerticalStackLayout Grid.Column="0" Spacing="4">
+                                <Label Text="Vorname *" FontSize="12" />
+                                <Entry x:Name="FirstNameEntry" 
+                                       Placeholder="Vorname..." 
+                                       FontSize="12"
+                                       HeightRequest="36" />
+                            </VerticalStackLayout>
+
+                            <VerticalStackLayout Grid.Column="1" Spacing="4">
+                                <Label Text="Nachname *" FontSize="12" />
+                                <Entry x:Name="LastNameEntry" 
+                                       Placeholder="Nachname..." 
+                                       FontSize="14"
+                                       HeightRequest="36" />
+                            </VerticalStackLayout>
+                        </Grid>
+
+                        <VerticalStackLayout Spacing="4">
+                            <Label Text="Firmenname (optional)" FontSize="12" />
+                            <Entry x:Name="CompanyEntry" 
+                                   Placeholder="Firmenname..." 
+                                   FontSize="12"
+                                   HeightRequest="36" />
+                        </VerticalStackLayout>
+                    </VerticalStackLayout>
+                </Frame>
+
+                <!-- Kontaktdaten kompakt -->
+                <Frame BackgroundColor="#F8F9FA" Padding="12" HasShadow="False">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="Kontaktdaten" FontSize="12" FontAttributes="Bold" />
+
+                        <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                            <VerticalStackLayout Grid.Column="0" Spacing="4">
+                                <Label Text="E-Mail *" FontSize="12" />
+                                <Entry x:Name="EmailEntry" 
+                                       Placeholder="E-Mail..."
+                                       Keyboard="Email"
+                                       FontSize="12"
+                                       HeightRequest="36" />
+                            </VerticalStackLayout>
+
+                            <VerticalStackLayout Grid.Column="1" Spacing="4">
+                                <Label Text="Telefon *" FontSize="12" />
+                                <Entry x:Name="PhoneEntry" 
+                                       Placeholder="Telefon..."
+                                       Keyboard="Telephone"
+                                       FontSize="12"
+                                       HeightRequest="36" />
+                            </VerticalStackLayout>
+                        </Grid>
+                    </VerticalStackLayout>
+                </Frame>
+
+                <!-- Adresse kompakt -->
+                <Frame BackgroundColor="#F8F9FA" Padding="12" HasShadow="False">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="Adresse" FontSize="12" FontAttributes="Bold" />
+
+                        <Grid ColumnDefinitions="2*,*" ColumnSpacing="8">
+                            <VerticalStackLayout Grid.Column="0" Spacing="4">
+                                <Label Text="Straße *" FontSize="12" />
+                                <Entry x:Name="StreetEntry" 
+                                       Placeholder="Straße..."
+                                       FontSize="12"
+                                       HeightRequest="36" />
+                            </VerticalStackLayout>
+
+                            <VerticalStackLayout Grid.Column="1" Spacing="4">
+                                <Label Text="Hausnummer *" FontSize="12" />
+                                <Entry x:Name="HouseNumberEntry" 
+                                       Placeholder="Hausnr."
+                                       FontSize="12"
+                                       HeightRequest="36" />
+                            </VerticalStackLayout>
+                        </Grid>
+
+                        <Grid ColumnDefinitions="*,2*" ColumnSpacing="8">
+                            <VerticalStackLayout Grid.Column="0" Spacing="4">
+                                <Label Text="PLZ *" FontSize="12" />
+                                <Entry x:Name="ZipCodeEntry" 
+                                       Placeholder="PLZ"
+                                       Keyboard="Numeric"
+                                       FontSize="12"
+                                       HeightRequest="36" />
+                            </VerticalStackLayout>
+
+                            <VerticalStackLayout Grid.Column="1" Spacing="4">
+                                <Label Text="Ort *" FontSize="12" />
+                                <Entry x:Name="CityEntry" 
+                                       Placeholder="Ort"
+                                       FontSize="12"
+                                       HeightRequest="36" />
+                            </VerticalStackLayout>
+                        </Grid>
+                    </VerticalStackLayout>
+                </Frame>
+
+                <!-- Umsatzsteuer-ID kompakt -->
+                <Frame BackgroundColor="#F8F9FA" Padding="12" HasShadow="False">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="Weitere Informationen" FontSize="12" FontAttributes="Bold" />
+
+                        <VerticalStackLayout Spacing="4">
+                            <Label Text="Umsatzsteuer-ID (optional)" FontSize="12" />
+                            <Entry x:Name="VatIdEntry" 
+                                   Placeholder="USt-ID..."
+                                   FontSize="12"
+                                   HeightRequest="36" />
+                        </VerticalStackLayout>
+                    </VerticalStackLayout>
+                </Frame>
+                
+                <!-- Quick Access Tools -->
+                <Frame BackgroundColor="#E8F5E8" Padding="12" HasShadow="False">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="Quick Access Tools" 
+               FontSize="14" 
+               FontAttributes="Bold" 
+               HorizontalOptions="Center" />
+
+                        <FlexLayout x:Name="ToolsFlexLayout"
+                    Wrap="Wrap"
+                    JustifyContent="Start"
+                    AlignItems="Start"
+                    Direction="Row"
+                    BindableLayout.ItemsSource="{Binding ActiveTools}">
+                            <BindableLayout.ItemTemplate>
+                                <DataTemplate>
+                                    <Button Text="{Binding Name}" 
+                            Clicked="OnToolButtonClicked"
+                            BackgroundColor="#27AE60"
+                            TextColor="White"
+                            Margin="2"
+                            Padding="8,4"
+                            HeightRequest="30"
+                            FontSize="11"
+                            CornerRadius="10" />
+                                </DataTemplate>
+                            </BindableLayout.ItemTemplate>
+                        </FlexLayout>
+
+                        <Label Text="Tools werden aus Einstellungen geladen..." 
+               x:Name="NoToolsLabel"
+               FontSize="11" 
+               TextColor="Gray" 
+               HorizontalOptions="Center"
+               IsVisible="False" />
+                    </VerticalStackLayout>
+                </Frame>
+                
+                <!-- Platz für zukünftige Buttons -->
+                <Grid ColumnDefinitions="*,*,*" ColumnSpacing="8" Margin="0,10,0,0">
+                    <!-- Hier können später zusätzliche Buttons hinzugefügt werden -->
+                    <Label Text="Platz für weitere Funktionen" 
+                           FontSize="11" 
+                           TextColor="Gray" 
+                           HorizontalOptions="Center"
+                           Grid.Column="0" />
+                    <Label Text="Platz für weitere Funktionen" 
+                           FontSize="11" 
+                           TextColor="Gray" 
+                           HorizontalOptions="Center"
+                           Grid.Column="1" />
+                    <Label Text="Platz für weitere Funktionen" 
+                           FontSize="11" 
+                           TextColor="Gray" 
+                           HorizontalOptions="Center"
+                           Grid.Column="2" />
+                </Grid>
+
+            </VerticalStackLayout>
+        </ScrollView>
+
+        <!-- UNTERE LEISTE: Buttons (unverändert) -->
+        <Grid Grid.Column="0" Grid.ColumnSpan="2" Grid.Row="1" 
+              ColumnDefinitions="*,*" ColumnSpacing="10" 
+              Padding="20,10" BackgroundColor="#F5F5F5">
+
+            <!-- Linke Seite: Statusmeldung -->
+            <Label x:Name="StatusLabel"
+                   Text="Bitte Daten eingeben"
+                   FontSize="14"
+                   VerticalOptions="Center"
+                   Grid.Column="0" />
+
+            <!-- Rechte Seite: Buttons -->
+            <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="10" Grid.Column="1">
+                <Button x:Name="SaveButton" 
+                        Text="Speichern" 
+                        Clicked="OnSaveButtonClicked"
+                        Grid.Column="0"
+                        BackgroundColor="#4CAF50"
+                        TextColor="White" />
+
+                <Button x:Name="ClearButton" 
+                        Text="Neu" 
+                        Clicked="OnClearButtonClicked"
+                        Grid.Column="1"
+                        BackgroundColor="#FF9800"
+                        TextColor="White" />
+
+                <Button x:Name="OpenFolderButton" 
+                        Text="Kunden-Ordner öffnen" 
+                        Clicked="OnOpenFolderButtonClicked"
+                        Grid.Column="2"
+                        BackgroundColor="#2196F3"
+                        TextColor="White"
+                        IsEnabled="False" />
+
+                <Button x:Name="SettingsButton" 
+                        Text="Einstellungen" 
+                        Clicked="OnSettingsButtonClicked"
+                        Grid.Column="4"
+                        BackgroundColor="#607D8B"
+                        TextColor="White" />                
+            </Grid>
+        </Grid>
+
+    </Grid>
+
+</ContentPage>
