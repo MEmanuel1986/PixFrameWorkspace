@@ -1,216 +1,79 @@
 ﻿using Microsoft.Maui.Controls;
-using Microsoft.Maui.Storage;
-
+using System;
 using System.Collections.ObjectModel;
+using System.Linq;
+using System.Threading.Tasks;
+using System.IO;
+using System.Collections.Generic;
 using System.Text;
-using System.Text.Json;
 
 namespace PixFrameWorkspace
 {
     public partial class MainPage : ContentPage
     {
-        private string _dataFilePath => AppConfig.GetCustomerDatabasePath();
-        private string _toolsConfigPath => AppConfig.GetToolsConfigPath();
-        private string _backupFilePath => AppConfig.GetBackupFilePath();
-        private string _customersBasePath => AppConfig.Settings.FullCustomersPath;
-        private int _currentCustomerNumber = 1000;
-        private string _lastCreatedFolderPath = string.Empty;
         private Customer _selectedCustomer;
-        private bool _isEditing = false;
-        
-        public ObservableCollection<AppTool> ActiveTools { get; } = new ObservableCollection<AppTool>();
+        private CustomerManager _customerManager;
 
-        public ObservableCollection<Customer> Customers { get; } = new ObservableCollection<Customer>();
-        public ObservableCollection<Customer> FilteredCustomers { get; } = new ObservableCollection<Customer>();
+        // ObservableCollection für Datenbindung
+        public ObservableCollection<Customer> Customers { get; set; } = new ObservableCollection<Customer>();
 
         public MainPage()
         {
             InitializeComponent();
             BindingContext = this;
 
-            // Daten laden
+            // Manager initialisieren
+            _customerManager = new CustomerManager();
+
+            // Initialisiere die Kundenliste
             LoadCustomers();
-            UpdateCustomerNumberDisplay();
-            CreateBackup();
 
-            // Initialen Button-Status setzen
-            UpdateSaveButtonState();
-
-            // Tools laden
-            LoadActiveTools();
+            // Setze die nächste Kundennummer
+            CustomerNumberLabel.Text = _customerManager.GetNextCustomerNumber().ToString();
         }
 
-        public class AppTool
+        // Event Handler für den Projekte-Button - MIT NAVIGATION ZUR PROJEKTSEITE
+        private async void OnProjectsButtonClicked(object sender, EventArgs e)
         {
-            public string Name { get; set; } = string.Empty;
-            public string ProcessName { get; set; } = string.Empty;
-            public string WindowsPath { get; set; } = string.Empty;
-            public string MacPath { get; set; } = string.Empty;
-        }
-
-        private void LoadCustomers()
-        {
-            Customers.Clear();
-            FilteredCustomers.Clear();
+            if (_selectedCustomer == null)
+            {
+                await DisplayAlert("Info", "Bitte wählen Sie erst einen Kunden aus der Liste aus.", "OK");
+                return;
+            }
 
             try
             {
-                if (File.Exists(_dataFilePath))
-                {
-                    var lines = File.ReadAllLines(_dataFilePath);
+                StatusLabel.Text = "Öffne Projekte...";
 
-                    // Header überspringen (erste Zeile)
-                    for (int i = 1; i < lines.Length; i++)
-                    {
-                        var line = lines[i];
-                        var parts = line.Split(',');
+                // Zur Projektseite navigieren und den ausgewählten Kunden übergeben
+                await Navigation.PushAsync(new ProjectsPage(_selectedCustomer));
 
-                        // Jetzt 12 Spalten (11 Daten + FolderPath)
-                        if (parts.Length >= 12)
-                        {
-                            var customer = new Customer
-                            {
-                                CustomerNumber = int.Parse(parts[0]),
-                                FirstName = UnescapeCsvField(parts[1]),
-                                LastName = UnescapeCsvField(parts[2]),
-                                Company = UnescapeCsvField(parts[3]),
-                                Email = UnescapeCsvField(parts[4]),
-                                Phone = UnescapeCsvField(parts[5]),
-                                Street = UnescapeCsvField(parts[6]),
-                                HouseNumber = UnescapeCsvField(parts[7]),
-                                ZipCode = UnescapeCsvField(parts[8]),
-                                City = UnescapeCsvField(parts[9]),
-                                VatId = UnescapeCsvField(parts[10]),
-                                FolderPath = UnescapeCsvField(parts[11]) // NEUE SPALTE
-                            };
-
-                            Customers.Add(customer);
-                            FilteredCustomers.Add(customer);
-
-                            // Höchste Kundennummer aktualisieren
-                            if (customer.CustomerNumber >= _currentCustomerNumber)
-                            {
-                                _currentCustomerNumber = customer.CustomerNumber + 1;
-                            }
-                        }
-                        else if (parts.Length >= 11)
-                        {
-                            // Fallback für alte CSV ohne FolderPath
-                            var customer = new Customer
-                            {
-                                CustomerNumber = int.Parse(parts[0]),
-                                FirstName = UnescapeCsvField(parts[1]),
-                                LastName = UnescapeCsvField(parts[2]),
-                                Company = UnescapeCsvField(parts[3]),
-                                Email = UnescapeCsvField(parts[4]),
-                                Phone = UnescapeCsvField(parts[5]),
-                                Street = UnescapeCsvField(parts[6]),
-                                HouseNumber = UnescapeCsvField(parts[7]),
-                                ZipCode = UnescapeCsvField(parts[8]),
-                                City = UnescapeCsvField(parts[9]),
-                                VatId = UnescapeCsvField(parts[10]),
-                                FolderPath = GetCustomerFolderPath(int.Parse(parts[0]), UnescapeCsvField(parts[2]), UnescapeCsvField(parts[1]))
-                            };
-
-                            Customers.Add(customer);
-                            FilteredCustomers.Add(customer);
-
-                            if (customer.CustomerNumber >= _currentCustomerNumber)
-                            {
-                                _currentCustomerNumber = customer.CustomerNumber + 1;
-                            }
-                        }
-                    }
-                }
-
-                UpdateCustomerCount();
-                CustomersListView.ItemsSource = FilteredCustomers;
+                StatusLabel.Text = $"Projekte für {_selectedCustomer.DisplayName} geöffnet";
             }
             catch (Exception ex)
             {
-                StatusLabel.Text = $"Fehler beim Laden: {ex.Message}";
+                await DisplayAlert("Fehler", $"Fehler beim Öffnen der Projekte: {ex.Message}", "OK");
+                StatusLabel.Text = "Fehler beim Öffnen der Projekte";
             }
         }
 
-        private string UnescapeCsvField(string field)
+        // Kunden aus Liste auswählen
+        private void OnCustomerSelected(object sender, SelectedItemChangedEventArgs e)
         {
-            if (string.IsNullOrEmpty(field)) return string.Empty;
-
-            if (field.StartsWith("\"") && field.EndsWith("\""))
+            if (e.SelectedItem is Customer customer)
             {
-                field = field.Substring(1, field.Length - 2);
-                field = field.Replace("\"\"", "\"");
-            }
-            return field;
-        }
+                _selectedCustomer = customer;
+                DisplayCustomerDetails(customer);
 
-        private void UpdateCustomerCount()
-        {
-            CustomerCountLabel.Text = $"{FilteredCustomers.Count} von {Customers.Count} Kunden";
-        }
+                StatusLabel.Text = $"Kunde {customer.DisplayName} ausgewählt";
 
-        // SUCHFUNKTIONALITÄT
-        private void OnSearchTextChanged(object sender, TextChangedEventArgs e)
-        {
-            FilterCustomers(e.NewTextValue);
-        }
-
-        private void OnClearSearchClicked(object sender, EventArgs e)
-        {
-            SearchEntry.Text = string.Empty;
-            FilterCustomers(string.Empty);
-        }
-
-        private void FilterCustomers(string searchText)
-        {
-            FilteredCustomers.Clear();
-
-            if (string.IsNullOrWhiteSpace(searchText))
-            {
-                // Alle Kunden anzeigen
-                foreach (var customer in Customers)
-                {
-                    FilteredCustomers.Add(customer);
-                }
-            }
-            else
-            {
-                // Gefilterte Kunden anzeigen
-                var searchLower = searchText.ToLower();
-                foreach (var customer in Customers)
-                {
-                    if (customer.FirstName.ToLower().Contains(searchLower) ||
-                        customer.LastName.ToLower().Contains(searchLower) ||
-                        customer.Company.ToLower().Contains(searchLower) ||
-                        customer.Email.ToLower().Contains(searchLower) ||
-                        customer.City.ToLower().Contains(searchLower) ||
-                        customer.CustomerNumber.ToString().Contains(searchText))
-                    {
-                        FilteredCustomers.Add(customer);
-                    }
-                }
-            }
-
-            UpdateCustomerCount();
-        }
-
-        // KUNDENAUSWAHL
-        private async void OnCustomerSelected(object sender, SelectedItemChangedEventArgs e)
-        {
-            if (e.SelectedItem is Customer selectedCustomer)
-            {
-                _selectedCustomer = selectedCustomer;
-                _isEditing = true;
-
-                // Zur Projekte-Seite navigieren statt Formular zu füllen
-                await Navigation.PushAsync(new ProjectsPage(selectedCustomer));
-
-                StatusLabel.Text = $"Kunde {selectedCustomer.CustomerNumber} ausgewählt";
-                StatusLabel.TextColor = Colors.Blue;
+                // Kunden-Ordner Button aktivieren, wenn Kunde ausgewählt ist
+                OpenFolderButton.IsEnabled = true;
             }
         }
 
-        private void LoadCustomerIntoForm(Customer customer)
+        // Kundendetails in Formular anzeigen
+        private void DisplayCustomerDetails(Customer customer)
         {
             CustomerNumberLabel.Text = customer.CustomerNumber.ToString();
             FirstNameEntry.Text = customer.FirstName;
@@ -225,470 +88,149 @@ namespace PixFrameWorkspace
             VatIdEntry.Text = customer.VatId;
         }
 
-        private string GetCustomerFolderPath(Customer customer)
+        // Kunden laden - MIT CSV-FUNKTIONALITÄT
+        private void LoadCustomers()
         {
-            return GetCustomerFolderPath(customer.CustomerNumber, customer.LastName, customer.FirstName);
-        }
-
-        private string GetCustomerFolderPath(int customerNumber, string lastName, string firstName)
-        {
-            // NEUE STRUKTUR: C_1001 statt Kunde_1001_Nachname_Vorname
-            string folderName = $"C_{customerNumber}";
-            return Path.Combine(_customersBasePath, folderName);
-        }
-
-        private void UpdateCustomerNumberDisplay()
-        {
-            CustomerNumberLabel.Text = _currentCustomerNumber.ToString();
-        }
-
-        // NEUE METHODE: Aktualisiert den Zustand des Speichern-Buttons
-        private void UpdateSaveButtonState()
-        {
-            if (_isEditing && _selectedCustomer != null)
+            try
             {
-                // Bearbeitungsmodus - Button zeigt "Aktualisieren"
-                SaveButton.Text = "Aktualisieren";
-                SaveButton.BackgroundColor = Colors.Orange;
+                Customers.Clear();
+                var allCustomers = _customerManager.GetAllCustomers();
+
+                foreach (var customer in allCustomers)
+                {
+                    Customers.Add(customer);
+                }
+
+                CustomerCountLabel.Text = $"{Customers.Count} Kunden gefunden";
+                StatusLabel.Text = $"{Customers.Count} Kunden geladen";
+            }
+            catch (Exception ex)
+            {
+                StatusLabel.Text = "Fehler beim Laden der Kunden";
+                DisplayAlert("Fehler", $"Fehler beim Laden der Kunden: {ex.Message}", "OK");
+            }
+        }
+
+        // Suchtext geändert - KORRIGIERT
+        private void OnSearchTextChanged(object sender, TextChangedEventArgs e)
+        {
+            var searchText = e.NewTextValue?.ToLower() ?? "";
+
+            if (string.IsNullOrWhiteSpace(searchText))
+            {
+                CustomersListView.ItemsSource = Customers;
             }
             else
             {
-                // Neuer Kunde - Button zeigt "Speichern"
-                SaveButton.Text = "Speichern";
-                SaveButton.BackgroundColor = Colors.Green;
+                var filteredCustomers = Customers.Where(c =>
+                    (c.FirstName?.ToLower().Contains(searchText) ?? false) ||
+                    (c.LastName?.ToLower().Contains(searchText) ?? false) ||
+                    (c.Company?.ToLower().Contains(searchText) ?? false) ||
+                    (c.City?.ToLower().Contains(searchText) ?? false) ||
+                    (c.Email?.ToLower().Contains(searchText) ?? false)
+                ).ToList();
+
+                CustomersListView.ItemsSource = filteredCustomers;
             }
+
+            CustomerCountLabel.Text = $"{((System.Collections.IList)CustomersListView.ItemsSource).Count} Kunden gefunden";
         }
 
+        // Suche löschen
+        private void OnClearSearchClicked(object sender, EventArgs e)
+        {
+            SearchEntry.Text = string.Empty;
+            CustomersListView.ItemsSource = Customers;
+            CustomerCountLabel.Text = $"{Customers.Count} Kunden gefunden";
+        }
+
+        // Kunden speichern - MIT CSV-FUNKTIONALITÄT UND AUTOMATISCHER ORDNERERSTELLUNG
         private async void OnSaveButtonClicked(object sender, EventArgs e)
         {
-            if (!ValidateInputs()) return;
+            // Validiere Pflichtfelder
+            if (string.IsNullOrWhiteSpace(FirstNameEntry.Text) || string.IsNullOrWhiteSpace(LastNameEntry.Text))
+            {
+                await DisplayAlert("Fehler", "Vorname und Nachname sind Pflichtfelder.", "OK");
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(EmailEntry.Text))
+            {
+                await DisplayAlert("Fehler", "E-Mail ist ein Pflichtfeld.", "OK");
+                return;
+            }
 
             try
             {
-                if (_isEditing && _selectedCustomer != null)
+                if (_selectedCustomer == null)
                 {
-                    // UPDATE EXISTING CUSTOMER
-                    UpdateExistingCustomer();
+                    // Neuen Kunden erstellen
+                    var newCustomer = new Customer
+                    {
+                        CustomerNumber = int.Parse(CustomerNumberLabel.Text),
+                        FirstName = FirstNameEntry.Text.Trim(),
+                        LastName = LastNameEntry.Text.Trim(),
+                        Company = CompanyEntry.Text?.Trim() ?? "",
+                        Email = EmailEntry.Text.Trim(),
+                        Phone = PhoneEntry.Text?.Trim() ?? "",
+                        Street = StreetEntry.Text?.Trim() ?? "",
+                        HouseNumber = HouseNumberEntry.Text?.Trim() ?? "",
+                        ZipCode = ZipCodeEntry.Text?.Trim() ?? "",
+                        City = CityEntry.Text?.Trim() ?? "",
+                        VatId = VatIdEntry.Text?.Trim() ?? ""
+                    };
+
+                    // Kunden speichern (inkl. Ordnererstellung)
+                    _customerManager.SaveCustomer(newCustomer);
+                    Customers.Add(newCustomer);
+                    _selectedCustomer = newCustomer;
+
+                    StatusLabel.Text = $"Kunde {newCustomer.DisplayName} gespeichert";
+                    await DisplayAlert("Erfolg", "Kunde erfolgreich gespeichert", "OK");
+
+                    // Nächste Kundennummer vorbereiten
+                    CustomerNumberLabel.Text = _customerManager.GetNextCustomerNumber().ToString();
                 }
                 else
                 {
-                    // CREATE NEW CUSTOMER
-                    CreateNewCustomer();
+                    // Existierenden Kunden aktualisieren
+                    _selectedCustomer.FirstName = FirstNameEntry.Text.Trim();
+                    _selectedCustomer.LastName = LastNameEntry.Text.Trim();
+                    _selectedCustomer.Company = CompanyEntry.Text?.Trim() ?? "";
+                    _selectedCustomer.Email = EmailEntry.Text.Trim();
+                    _selectedCustomer.Phone = PhoneEntry.Text?.Trim() ?? "";
+                    _selectedCustomer.Street = StreetEntry.Text?.Trim() ?? "";
+                    _selectedCustomer.HouseNumber = HouseNumberEntry.Text?.Trim() ?? "";
+                    _selectedCustomer.ZipCode = ZipCodeEntry.Text?.Trim() ?? "";
+                    _selectedCustomer.City = CityEntry.Text?.Trim() ?? "";
+                    _selectedCustomer.VatId = VatIdEntry.Text?.Trim() ?? "";
+
+                    _customerManager.SaveCustomer(_selectedCustomer);
+
+                    // ListView aktualisieren
+                    var index = Customers.IndexOf(_selectedCustomer);
+                    if (index != -1)
+                    {
+                        Customers[index] = _selectedCustomer;
+                    }
+
+                    StatusLabel.Text = $"Kunde {_selectedCustomer.DisplayName} aktualisiert";
+                    await DisplayAlert("Erfolg", "Kunde erfolgreich aktualisiert", "OK");
                 }
             }
             catch (Exception ex)
             {
-                StatusLabel.Text = $"Fehler: {ex.Message}";
-                StatusLabel.TextColor = Colors.Red;
+                await DisplayAlert("Fehler", $"Fehler beim Speichern: {ex.Message}", "OK");
             }
         }
 
-        private void RewriteCompleteCsvFile()
-        {
-            var lines = new List<string>
-            {
-            // NEUER HEADER MIT ORDNERPFAAD
-            "Kundennummer,Vorname,Nachname,Firma,Email,Telefon,Straße,Hausnummer,PLZ,Ort,UStID,OrdnerPfad"
-            };
-
-            foreach (var customer in Customers)
-            {
-                var line = $"{customer.CustomerNumber}," +
-                          $"{EscapeCsvField(customer.FirstName)}," +
-                          $"{EscapeCsvField(customer.LastName)}," +
-                          $"{EscapeCsvField(customer.Company)}," +
-                          $"{EscapeCsvField(customer.Email)}," +
-                          $"{EscapeCsvField(customer.Phone)}," +
-                          $"{EscapeCsvField(customer.Street)}," +
-                          $"{EscapeCsvField(customer.HouseNumber)}," +
-                          $"{EscapeCsvField(customer.ZipCode)}," +
-                          $"{EscapeCsvField(customer.City)}," +
-                          $"{EscapeCsvField(customer.VatId)}," +
-                          $"{EscapeCsvField(customer.FolderPath)}"; // NEUE SPALTE
-                lines.Add(line);
-            }
-
-            File.WriteAllLines(_dataFilePath, lines, Encoding.UTF8);
-        }
-
-        private void CreateNewCustomer()
-        {
-            // Speichere die Kundennummer für den neuen Kunden
-            int newCustomerNumber = _currentCustomerNumber;
-
-            // Kundenordner erstellen
-            string customerFolderPath = CreateCustomerFolder();
-
-            var csvLine = $"{newCustomerNumber}," +
-                         $"{EscapeCsvField(FirstNameEntry.Text)}," +
-                         $"{EscapeCsvField(LastNameEntry.Text)}," +
-                         $"{EscapeCsvField(CompanyEntry.Text)}," +
-                         $"{EscapeCsvField(EmailEntry.Text)}," +
-                         $"{EscapeCsvField(PhoneEntry.Text)}," +
-                         $"{EscapeCsvField(StreetEntry.Text)}," +
-                         $"{EscapeCsvField(HouseNumberEntry.Text)}," +
-                         $"{EscapeCsvField(ZipCodeEntry.Text)}," +
-                         $"{EscapeCsvField(CityEntry.Text)}," +
-                         $"{EscapeCsvField(VatIdEntry.Text)}," +
-                         $"{EscapeCsvField(customerFolderPath)}"; // NEUE SPALTE
-
-            if (!File.Exists(_dataFilePath))
-            {
-                // Header mit neuer Spalte
-                File.WriteAllText(_dataFilePath, "Kundennummer,Vorname,Nachname,Firma,Email,Telefon,Straße,Hausnummer,PLZ,Ort,UStID,OrdnerPfad\n", Encoding.UTF8);
-            }
-
-            File.AppendAllText(_dataFilePath, csvLine + "\n", Encoding.UTF8);
-            CreateBackup();
-
-            // Kundennummer für nächsten Kunden erhöhen
-            _currentCustomerNumber++;
-
-            // Daten neu laden
-            LoadCustomers();
-
-            // Den soeben erstellten Kunden in der ListView auswählen
-            SelectNewCustomerInListView(newCustomerNumber);
-
-            StatusLabel.Text = $"Kunde {newCustomerNumber} gespeichert und geladen!";
-            StatusLabel.TextColor = Colors.Green;
-
-            _lastCreatedFolderPath = customerFolderPath;
-            OpenFolderButton.IsEnabled = true;
-        }
-
-        // NEUE METHODE: Selektiert den neuen Kunden in der ListView
-        private void SelectNewCustomerInListView(int customerNumber)
-        {
-            var newCustomer = FilteredCustomers.FirstOrDefault(c => c.CustomerNumber == customerNumber);
-            if (newCustomer != null)
-            {
-                // Wähle den neuen Kunden in der ListView aus
-                CustomersListView.SelectedItem = newCustomer;
-
-                // Stelle sicher, dass der ausgewählte Kunden sichtbar ist
-                CustomersListView.ScrollTo(newCustomer, ScrollToPosition.MakeVisible, false);
-            }
-        }
-
-        private void UpdateExistingCustomer()
-        {
-            // Aktualisiere den ausgewählten Kunden
-            _selectedCustomer.FirstName = FirstNameEntry.Text;
-            _selectedCustomer.LastName = LastNameEntry.Text;
-            _selectedCustomer.Company = CompanyEntry.Text;
-            _selectedCustomer.Email = EmailEntry.Text;
-            _selectedCustomer.Phone = PhoneEntry.Text;
-            _selectedCustomer.Street = StreetEntry.Text;
-            _selectedCustomer.HouseNumber = HouseNumberEntry.Text;
-            _selectedCustomer.ZipCode = ZipCodeEntry.Text;
-            _selectedCustomer.City = CityEntry.Text;
-            _selectedCustomer.VatId = VatIdEntry.Text;
-
-            // NEU: Ordnerpfad aktualisieren (falls sich Name geändert hat)
-            string newFolderPath = GetCustomerFolderPath(_selectedCustomer);
-            if (_selectedCustomer.FolderPath != newFolderPath)
-            {
-                // Ordner umbenennen, falls Pfad sich geändert hat
-                if (Directory.Exists(_selectedCustomer.FolderPath) && !Directory.Exists(newFolderPath))
-                {
-                    Directory.Move(_selectedCustomer.FolderPath, newFolderPath);
-                }
-                _selectedCustomer.FolderPath = newFolderPath;
-            }
-
-            // Schreibe komplette CSV neu
-            RewriteCompleteCsvFile();
-
-            // Aktualisiere Kundeninfo im Ordner
-            UpdateCustomerInfoFile(_selectedCustomer);
-
-            // Backup erstellen
-            CreateBackup();
-
-            // UI aktualisieren
-            LoadCustomers();
-
-            // Den aktualisierten Kunden wieder auswählen
-            var updatedCustomer = FilteredCustomers.FirstOrDefault(c => c.CustomerNumber == _selectedCustomer.CustomerNumber);
-            if (updatedCustomer != null)
-            {
-                CustomersListView.SelectedItem = updatedCustomer;
-                _lastCreatedFolderPath = updatedCustomer.FolderPath;
-                OpenFolderButton.IsEnabled = Directory.Exists(_lastCreatedFolderPath);
-            }
-
-            StatusLabel.Text = $"Kunde {_selectedCustomer.CustomerNumber} aktualisiert!";
-            StatusLabel.TextColor = Colors.Green;
-        }
-
-        private void UpdateCustomerInfoFile(Customer customer)
-        {
-            string customerFolderPath = GetCustomerFolderPath(customer);
-            if (Directory.Exists(customerFolderPath))
-            {
-                string infoFilePath = Path.Combine(customerFolderPath, "Kundeninfo.txt");
-                string infoContent = $"KUNDENINFORMATION\n" +
-                                   $"================\n" +
-                                   $"Kundennummer: {customer.CustomerNumber}\n" +
-                                   $"Name: {customer.FirstName} {customer.LastName}\n" +
-                                   $"Firma: {(string.IsNullOrEmpty(customer.Company) ? "n/a" : customer.Company)}\n" +
-                                   $"E-Mail: {customer.Email}\n" +
-                                   $"Telefon: {customer.Phone}\n" +
-                                   $"Adresse: {customer.Street} {customer.HouseNumber}, {customer.ZipCode} {customer.City}\n" +
-                                   $"USt-ID: {(string.IsNullOrEmpty(customer.VatId) ? "n/a" : customer.VatId)}\n" +
-                                   $"Aktualisiert am: {DateTime.Now:dd.MM.yyyy HH:mm}\n\n" +
-                                   $"ORDNERSTRUKTUR:\n" +
-                                   $"01_Projekte/     - Alle Projektdateien\n" +
-                                   $"02_Rechnungen/   - Rechnungen (Eingang/Ausgang)\n" +
-                                   $"03_Vertraege/    - Verträge und Vereinbarungen\n" +
-                                   $"04_Korrespondenz/- E-Mails, Briefe, Kommunikation\n" +
-                                   $"05_Medien/       - Fotos, Videos, Grafiken, Präsentationen\n" +
-                                   $"06_Sonstiges/    - Diverse Dateien\n" +
-                                   $"07_Dokumente/    - Wichtige Dokumente\n" +
-                                   $"08_Angebote/     - Angebote und Kostenvoranschläge";
-
-                File.WriteAllText(infoFilePath, infoContent, Encoding.UTF8);
-            }
-        }
-
-        private bool ValidateInputs()
-        {
-            if (string.IsNullOrWhiteSpace(FirstNameEntry.Text) ||
-                string.IsNullOrWhiteSpace(LastNameEntry.Text) ||
-                string.IsNullOrWhiteSpace(EmailEntry.Text) ||
-                string.IsNullOrWhiteSpace(PhoneEntry.Text) ||
-                string.IsNullOrWhiteSpace(StreetEntry.Text) ||
-                string.IsNullOrWhiteSpace(HouseNumberEntry.Text) ||
-                string.IsNullOrWhiteSpace(ZipCodeEntry.Text) ||
-                string.IsNullOrWhiteSpace(CityEntry.Text))
-            {
-                StatusLabel.Text = "Bitte alle Pflichtfelder (*) ausfüllen!";
-                StatusLabel.TextColor = Colors.Red;
-                return false;
-            }
-
-            if (!EmailEntry.Text.Contains("@") || !EmailEntry.Text.Contains("."))
-            {
-                StatusLabel.Text = "Bitte gültige E-Mail eingeben!";
-                StatusLabel.TextColor = Colors.Red;
-                return false;
-            }
-
-            return true;
-        }
-
-        private void CreateBackup()
-        {
-            try
-            {
-                if (File.Exists(_dataFilePath))
-                {
-                    File.Copy(_dataFilePath, _backupFilePath, overwrite: true);
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Backup-Fehler: {ex.Message}");
-            }
-        }
-
+        // Formular zurücksetzen für neuen Kunden
         private void OnClearButtonClicked(object sender, EventArgs e)
         {
-            ClearEntries();
-            ResetEditMode();
-            StatusLabel.Text = "Bereit für neuen Kunden";
-            StatusLabel.TextColor = Colors.Blue;
-        }
-
-        private void ResetEditMode()
-        {
-            _isEditing = false;
             _selectedCustomer = null;
-            CustomersListView.SelectedItem = null;
-            OpenFolderButton.IsEnabled = false; // Button deaktivieren
 
-            // Button-Status zurücksetzen
-            UpdateSaveButtonState();
-
-            // Kundennummer für neuen Kunden anzeigen
-            UpdateCustomerNumberDisplay();
-        }
-
-        private async void OnOpenFolderButtonClicked(object sender, EventArgs e)
-        {
-            if (!string.IsNullOrEmpty(_lastCreatedFolderPath) && Directory.Exists(_lastCreatedFolderPath))
-            {
-                try
-                {
-                    // Warte auf das Öffnen des Ordners
-                    bool success = await Launcher.Default.OpenAsync(new OpenFileRequest
-                    {
-                        File = new ReadOnlyFile(_lastCreatedFolderPath)
-                    });
-
-                    if (!success)
-                    {
-                        // Fallback mit await
-                        await OpenFolderPlatformSpecific(_lastCreatedFolderPath);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    // Fallback mit await
-                    await OpenFolderPlatformSpecific(_lastCreatedFolderPath);
-                }
-            }
-            else
-            {
-                await DisplayAlert("Ordner nicht gefunden",
-                                  "Der Kundenordner existiert nicht oder wurde gelöscht.", "OK");
-            }
-        }
-
-        // Hilfsmethode für plattformspezifisches Öffnen
-        private async Task OpenFolderPlatformSpecific(string folderPath)
-        {
-            try
-            {
-                if (DeviceInfo.Platform == DevicePlatform.WinUI)
-                {
-                    // Windows - kein await nötig da synchron
-                    System.Diagnostics.Process.Start("explorer", $"\"{folderPath}\"");
-                }
-                else if (DeviceInfo.Platform == DevicePlatform.MacCatalyst)
-                {
-                    // macOS - kein await nötig da synchron
-                    System.Diagnostics.Process.Start("open", $"\"{folderPath}\"");
-                }
-                else
-                {
-                    // Andere Plattformen - zeige den Pfad an (mit await)
-                    await DisplayAlert("Kunden-Ordner",
-                                      $"Ordner-Pfad:\n{folderPath}", "OK");
-                }
-            }
-            catch (Exception ex)
-            {
-                await DisplayAlert("Fehler",
-                                  $"Ordner konnte nicht geöffnet werden:\n{ex.Message}", "OK");
-            }
-        }
-        
-        private async void OnSettingsButtonClicked(object sender, EventArgs e)
-        {
-            await Navigation.PushAsync(new SettingsPage());
-        }
-
-        private string CreateCustomerFolder()
-        {
-            string customerFolderName = $"C_{_currentCustomerNumber}";
-            string customerFolderPath = Path.Combine(_customersBasePath, customerFolderName);
-
-            try
-            {
-                Directory.CreateDirectory(customerFolderPath);
-                CreateSubfolders(customerFolderPath);
-                CreateCustomerInfoFile(customerFolderPath);
-                return customerFolderPath;
-            }
-            catch (Exception ex)
-            {
-                throw new Exception($"Ordner-Erstellung fehlgeschlagen: {ex.Message}");
-            }
-        }
-
-        private void CreateSubfolders(string customerFolderPath)
-        {
-            var subfolders = new[]
-            {
-                "01_Projects",      // Hier werden die Projektordner angelegt
-                "02_Miscellaneous", // Allgemeine Dateien zum Kunden
-                "03_Finance"        // Finanzdokumente (nicht projektgebunden)
-            };
-
-            foreach (var folder in subfolders)
-            {
-                string fullPath = Path.Combine(customerFolderPath, folder);
-                Directory.CreateDirectory(fullPath);
-            }
-        }
-
-        private void CreateMediaSubfolderReadme(string folderPath, string mediaType)
-        {
-            string readmePath = Path.Combine(folderPath, "README.txt");
-
-            string readmeContent = mediaType switch
-            {
-                "Bilder" => "Bilder und Grafiken\n- Fotos\n- Logos\n- Icons\n- Screenshots\n- Formate: JPG, PNG, GIF, SVG",
-                "Videos" => "Video-Projekte und Clips\n- Rohmaterial\n- Fertige Videos\n- Animationen\n- Formate: MP4, MOV, AVI",
-                "Audio" => "Audio-Dateien\n- Sprachaufnahmen\n- Musik\n- Soundeffekte\n- Formate: MP3, WAV, WMA",
-                "Präsentationen" => "Präsentationen\n- PowerPoint Dateien\n- PDF-Präsentationen\n- Keynote Dateien",
-                _ => $"Medien-Unterordner: {mediaType}"
-            };
-
-            File.WriteAllText(readmePath, readmeContent, Encoding.UTF8);
-        }
-
-        private void CreateFolderReadme(string folderPath, string folderName)
-        {
-            string readmePath = Path.Combine(folderPath, "README.txt");
-
-            string readmeContent = folderName switch
-            {
-                "01_Projekte" => "In diesem Ordner werden alle Projektdateien gespeichert.\n- Projektpläne\n- Zeitpläne\n- Projektberichte\n- Arbeitsdateien",
-                "02_Rechnungen" => "Rechnungen-Verwaltung\n- 'Eingang/' für erhaltene Rechnungen\n- 'Ausgang/' für gestellte Rechnungen",
-                "03_Vertraege" => "Verträge und rechtliche Dokumente\n- Dienstleistungsverträge\n- NDAs\n- Rahmenvereinbarungen",
-                "04_Korrespondenz" => "Kommunikation mit dem Kunden\n- E-Mail Exporte\n- Briefe\n- Gesprächsprotokolle",
-                "05_Medien" => "Medien aller Art\n- Fotos und Bilder\n- Videos und Animationen\n- Audiodateien\n- Logos und Grafiken\n- Präsentationen",
-                "06_Sonstiges" => "Diverse Dateien\n- Notizen\n- Temporäre Dateien\n- Verschiedenes",
-                "07_Dokumente" => "Wichtige Dokumente\n- Formulare\n- Zertifikate\n- Nachweise",
-                "08_Angebote" => "Angebote und Kostenvoranschläge\n- Angebots-PDFs\n- Kalkulationen\n- Preislisten",
-                _ => $"Ordner: {folderName}\nHier können Sie relevante Dateien speichern."
-            };
-
-            File.WriteAllText(readmePath, readmeContent, Encoding.UTF8);
-        }
-
-        private void CreateCustomerInfoFile(string customerFolderPath)
-        {
-            string infoFilePath = Path.Combine(customerFolderPath, "Kundeninfo.txt");
-            string infoContent = $"KUNDENINFORMATION\n" +
-                               $"================\n" +
-                               $"Kundennummer: {_currentCustomerNumber}\n" +
-                               $"Name: {FirstNameEntry.Text} {LastNameEntry.Text}\n" +
-                               $"Firma: {(string.IsNullOrEmpty(CompanyEntry.Text) ? "n/a" : CompanyEntry.Text)}\n" +
-                               $"E-Mail: {EmailEntry.Text}\n" +
-                               $"Telefon: {PhoneEntry.Text}\n" +
-                               $"Adresse: {StreetEntry.Text} {HouseNumberEntry.Text}, {ZipCodeEntry.Text} {CityEntry.Text}\n" +
-                               $"USt-ID: {(string.IsNullOrEmpty(VatIdEntry.Text) ? "n/a" : VatIdEntry.Text)}\n" +
-                               $"Erstellt am: {DateTime.Now:dd.MM.yyyy HH:mm}\n\n" +
-                               $"ORDNERSTRUKTUR:\n" +
-                               $"01_Projekte/     - Alle Projektdateien\n" +
-                               $"02_Rechnungen/   - Rechnungen (Eingang/Ausgang)\n" +
-                               $"03_Vertraege/    - Verträge und Vereinbarungen\n" +
-                               $"04_Korrespondenz/- E-Mails, Briefe, Kommunikation\n" +
-                               $"05_Medien/       - Fotos, Videos, Grafiken, Präsentationen\n" +
-                               $"06_Sonstiges/    - Diverse Dateien\n" +
-                               $"07_Dokumente/    - Wichtige Dokumente\n" +
-                               $"08_Angebote/     - Angebote und Kostenvoranschläge";
-
-            File.WriteAllText(infoFilePath, infoContent, Encoding.UTF8);
-        }
-
-        private string EscapeCsvField(string field)
-        {
-            if (string.IsNullOrEmpty(field)) return "";
-            if (field.Contains(",") || field.Contains("\"") || field.Contains("\n"))
-            {
-                return $"\"{field.Replace("\"", "\"\"")}\"";
-            }
-            return field;
-        }
-
-        private void ClearEntries()
-        {
-            UpdateCustomerNumberDisplay();
+            // Formular leeren
+            CustomerNumberLabel.Text = _customerManager.GetNextCustomerNumber().ToString();
             FirstNameEntry.Text = string.Empty;
             LastNameEntry.Text = string.Empty;
             CompanyEntry.Text = string.Empty;
@@ -699,241 +241,535 @@ namespace PixFrameWorkspace
             ZipCodeEntry.Text = string.Empty;
             CityEntry.Text = string.Empty;
             VatIdEntry.Text = string.Empty;
-            FirstNameEntry.Focus();
+
+            // Selection in ListView zurücksetzen
+            CustomersListView.SelectedItem = null;
+            OpenFolderButton.IsEnabled = false;
+
+            StatusLabel.Text = "Bereit für neuen Kunden";
         }
-        private void LoadActiveTools()
+
+        // Kunden-Ordner öffnen - MIT ORDNER-ERSTELLUNG
+        private async void OnOpenFolderButtonClicked(object sender, EventArgs e)
         {
-            ActiveTools.Clear();
+            if (_selectedCustomer == null)
+            {
+                await DisplayAlert("Info", "Bitte wählen Sie erst einen Kunden aus.", "OK");
+                return;
+            }
 
             try
             {
-                if (File.Exists(_toolsConfigPath))
+                StatusLabel.Text = "Öffne Kunden-Ordner...";
+                var success = _customerManager.OpenCustomerFolder(_selectedCustomer);
+
+                if (success)
                 {
-                    var json = File.ReadAllText(_toolsConfigPath);
-                    var toolsConfig = JsonSerializer.Deserialize<Dictionary<string, bool>>(json);
-
-                    if (toolsConfig != null)
-                    {
-                        var allTools = GetAllAvailableTools();
-
-                        foreach (var tool in allTools)
-                        {
-                            if (toolsConfig.GetValueOrDefault(tool.Name, false))
-                            {
-                                ActiveTools.Add(tool);
-                            }
-                        }
-                    }
+                    StatusLabel.Text = $"Ordner für {_selectedCustomer.DisplayName} geöffnet";
                 }
-
-                // UI anpassen basierend auf vorhandenen Tools
-                NoToolsLabel.IsVisible = ActiveTools.Count == 0;
-                ToolsFlexLayout.IsVisible = ActiveTools.Count > 0;
+                else
+                {
+                    StatusLabel.Text = "Fehler beim Öffnen des Ordners";
+                }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Fehler beim Laden der Tools: {ex.Message}");
+                await DisplayAlert("Fehler", $"Fehler beim Öffnen des Ordners: {ex.Message}", "OK");
+                StatusLabel.Text = "Fehler beim Öffnen des Ordners";
             }
         }
 
-        private List<AppTool> GetAllAvailableTools()
-        {
-            return new List<AppTool>
-        {
-            new AppTool {
-                Name = "Photoshop",
-                ProcessName = "photoshop",
-                WindowsPath = @"C:\Program Files\Adobe\Adobe Photoshop 2023\Photoshop.exe",
-                MacPath = "/Applications/Adobe Photoshop 2023/Adobe Photoshop 2023.app"
-            },
-            new AppTool {
-                Name = "Lightroom",
-                ProcessName = "lightroom",
-                WindowsPath = @"C:\Program Files\Adobe\Adobe Lightroom Classic\Lightroom.exe",
-                MacPath = "/Applications/Adobe Lightroom Classic/Adobe Lightroom Classic.app"
-            },
-            new AppTool {
-                Name = "GIMP",
-                ProcessName = "gimp",
-                WindowsPath = @"C:\Program Files\GIMP 2\bin\gimp-2.10.exe",
-                MacPath = "/Applications/GIMP-2.10.app/Contents/MacOS/gimp"
-            },
-            new AppTool {
-                Name = "DaVinci Resolve",
-                ProcessName = "resolve",
-                WindowsPath = @"C:\Program Files\Blackmagic Design\DaVinci Resolve\Resolve.exe",
-                MacPath = "/Applications/DaVinci Resolve/DaVinci Resolve.app"
-            },
-            new AppTool {
-                Name = "iMovie",
-                ProcessName = "iMovie",
-                WindowsPath = "", // iMovie ist nur auf Mac
-                MacPath = "/Applications/iMovie.app"
-            },
-            new AppTool {
-                Name = "Premiere Pro",
-                ProcessName = "adobe premiere pro",
-                WindowsPath = @"C:\Program Files\Adobe\Adobe Premiere Pro 2023\Adobe Premiere Pro.exe",
-                MacPath = "/Applications/Adobe Premiere Pro 2023/Adobe Premiere Pro 2023.app"
-            },
-            new AppTool {
-                Name = "Final Cut Pro",
-                ProcessName = "final cut pro",
-                WindowsPath = "", // Final Cut Pro ist nur auf Mac
-                MacPath = "/Applications/Final Cut Pro.app"
-            },
-            new AppTool {
-                Name = "Affinity Photo",
-                ProcessName = "affinity photo",
-                WindowsPath = @"C:\Program Files\Affinity\Affinity Photo 2\Photo.exe",
-                MacPath = "/Applications/Affinity Photo 2.app"
-            },
-            new AppTool {
-                Name = "Capture One",
-                ProcessName = "capture one",
-                WindowsPath = @"C:\Program Files\Capture One\Capture One.exe",
-                MacPath = "/Applications/Capture One/Capture One.app"
-            },
-            new AppTool {
-                Name = "Camerabag",
-                ProcessName = "camerabag photo",
-                WindowsPath = @"C:\Program Files\Camerabag Photo\Camerabag Photo.exe",
-                MacPath = "/Applications/Camerabag Photo.app"
-            }
-        };
-        }
-
-        private async void OnToolButtonClicked(object sender, EventArgs e)
-        {
-            if (sender is Button button && button.BindingContext is AppTool tool)
-            {
-                try
-                {
-                    bool success = await StartApplication(tool);
-
-                    if (success)
-                    {
-                        StatusLabel.Text = $"{tool.Name} wird gestartet...";
-                        StatusLabel.TextColor = Colors.Green;
-                    }
-                    else
-                    {
-                        StatusLabel.Text = $"{tool.Name} konnte nicht gestartet werden";
-                        StatusLabel.TextColor = Colors.Orange;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    await DisplayAlert("Fehler", $"{tool.Name} starten fehlgeschlagen:\n{ex.Message}", "OK");
-                }
-            }
-        }
-
-        private async Task<bool> StartApplication(AppTool tool)
+        // Einstellungen öffnen - MIT NAVIGATION ZUR SETTINGSPAGE
+        private async void OnSettingsButtonClicked(object sender, EventArgs e)
         {
             try
             {
-                string processPath = "";
+                StatusLabel.Text = "Öffne Einstellungen...";
 
-                if (DeviceInfo.Platform == DevicePlatform.WinUI)
-                {
-                    processPath = tool.WindowsPath;
+                // Zur SettingsPage navigieren
+                await Navigation.PushAsync(new SettingsPage());
 
-                    // Fallback: Versuche über Process Name
-                    if (string.IsNullOrEmpty(processPath) || !File.Exists(processPath))
-                    {
-                        return await TryStartByProcessName(tool.ProcessName);
-                    }
-                }
-                else if (DeviceInfo.Platform == DevicePlatform.MacCatalyst)
-                {
-                    processPath = tool.MacPath;
-
-                    // Fallback: Versuche über Process Name
-                    if (string.IsNullOrEmpty(processPath) || !File.Exists(processPath))
-                    {
-                        return await TryStartByProcessName(tool.ProcessName);
-                    }
-                }
-
-                // Versuche direkt mit dem Pfad zu starten
-                if (!string.IsNullOrEmpty(processPath) && File.Exists(processPath))
-                {
-                    System.Diagnostics.Process.Start(processPath);
-                    return true;
-                }
-
-                return false;
+                StatusLabel.Text = "Einstellungen geöffnet";
             }
-            catch
+            catch (Exception ex)
             {
-                return false;
+                await DisplayAlert("Fehler", $"Fehler beim Öffnen der Einstellungen: {ex.Message}", "OK");
+                StatusLabel.Text = "Fehler beim Öffnen der Einstellungen";
             }
         }
 
-        private async Task<bool> TryStartByProcessName(string processName)
-        {
-            try
-            {
-                if (DeviceInfo.Platform == DevicePlatform.WinUI)
-                {
-                    System.Diagnostics.Process.Start(processName);
-                    return true;
-                }
-                else if (DeviceInfo.Platform == DevicePlatform.MacCatalyst)
-                {
-                    // Auf macOS verwenden wir 'open -a' für Applications
-                    System.Diagnostics.Process.Start("open", $"-a \"{processName}\"");
-                    return true;
-                }
-
-                return false;
-            }
-            catch
-            {
-                // Letzter Versuch: Benutzer nach Pfad fragen
-                return await AskUserForApplicationPath(processName);
-            }
-        }
-
-        private async Task<bool> AskUserForApplicationPath(string appName)
-        {
-            bool answer = await DisplayAlert("Tool nicht gefunden",
-                $"{appName} wurde nicht automatisch gefunden. Möchten Sie den Pfad manuell auswählen?",
-                "Ja", "Nein");
-
-            if (answer)
-            {
-                var fileResult = await FilePicker.Default.PickAsync(new PickOptions
-                {
-                    PickerTitle = $"Wählen Sie {appName} aus",
-                    FileTypes = new FilePickerFileType(
-                        new Dictionary<DevicePlatform, IEnumerable<string>>
-                        {
-                        { DevicePlatform.WinUI, new[] { ".exe" } },
-                        { DevicePlatform.MacCatalyst, new[] { ".app" } }
-                        })
-                });
-
-                if (fileResult != null)
-                {
-                    // Hier könntest du den Pfad speichern für zukünftige Verwendung
-                    System.Diagnostics.Process.Start(fileResult.FullPath);
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        // Beim Zurückkommen von der Einstellungsseite Tools neu laden
+        // Wird aufgerufen wenn die Seite erscheint
         protected override void OnAppearing()
         {
             base.OnAppearing();
-            LoadActiveTools();
+            // Stelle sicher, dass die Daten aktuell sind
+            LoadCustomers();
         }
-
-       
     }
 
+    // CustomerManager MIT CSV-FUNKTIONALITÄT (OHNE CSVHELPER) - PFAD KORRIGIERT
+    // UND VOLLSTÄNDIGER ORDNERERSTELLUNG FÜR KUNDEN UND PROJEKTE
+    public class CustomerManager
+    {
+        private string _dataFolder;
+        private string _csvFilePath;
+
+        public CustomerManager()
+        {
+            // KORREKTUR: Geändert von "Daten" zu "Data"
+            _dataFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "PixFrameWorkspace", "Data");
+            _csvFilePath = Path.Combine(_dataFolder, "customers.csv");
+
+            // Stelle sicher, dass der Datenordner existiert
+            Directory.CreateDirectory(_dataFolder);
+
+            // Stelle sicher, dass die CSV-Datei existiert und einen Header hat
+            EnsureCsvFileExists();
+        }
+
+        private void EnsureCsvFileExists()
+        {
+            if (!File.Exists(_csvFilePath))
+            {
+                // Erstelle die CSV-Datei mit Header
+                var header = "CustomerNumber,FirstName,LastName,Company,Email,Phone,Street,HouseNumber,ZipCode,City,VatId,FolderPath";
+                File.WriteAllText(_csvFilePath, header, Encoding.UTF8);
+            }
+        }
+
+        public List<Customer> GetAllCustomers()
+        {
+            var customers = new List<Customer>();
+
+            if (!File.Exists(_csvFilePath))
+            {
+                return customers;
+            }
+
+            try
+            {
+                var lines = File.ReadAllLines(_csvFilePath, Encoding.UTF8);
+                if (lines.Length <= 1) return customers; // Nur Header oder leer
+
+                for (int i = 1; i < lines.Length; i++) // Überspringe Header
+                {
+                    var fields = ParseCsvLine(lines[i]);
+                    if (fields.Length >= 12) // Stelle sicher, dass alle Felder vorhanden sind
+                    {
+                        var customer = new Customer
+                        {
+                            CustomerNumber = int.TryParse(fields[0], out int cn) ? cn : 0,
+                            FirstName = fields[1],
+                            LastName = fields[2],
+                            Company = fields[3],
+                            Email = fields[4],
+                            Phone = fields[5],
+                            Street = fields[6],
+                            HouseNumber = fields[7],
+                            ZipCode = fields[8],
+                            City = fields[9],
+                            VatId = fields[10],
+                            FolderPath = fields[11]
+                        };
+
+                        // Nur gültige Kunden hinzufügen
+                        if (customer.CustomerNumber > 0 && !string.IsNullOrEmpty(customer.FirstName) && !string.IsNullOrEmpty(customer.LastName))
+                        {
+                            customers.Add(customer);
+                        }
+                    }
+                    else if (fields.Length >= 11)
+                    {
+                        // Fallback für alte CSV ohne FolderPath
+                        var customer = new Customer
+                        {
+                            CustomerNumber = int.TryParse(fields[0], out int cn) ? cn : 0,
+                            FirstName = fields[1],
+                            LastName = fields[2],
+                            Company = fields[3],
+                            Email = fields[4],
+                            Phone = fields[5],
+                            Street = fields[6],
+                            HouseNumber = fields[7],
+                            ZipCode = fields[8],
+                            City = fields[9],
+                            VatId = fields[10],
+                            FolderPath = GetCustomerFolderPath(int.Parse(fields[0]), fields[2], fields[1])
+                        };
+                        customers.Add(customer);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"Fehler beim Lesen der Kunden: {ex.Message}");
+            }
+
+            return customers;
+        }
+
+        private string[] ParseCsvLine(string line)
+        {
+            var result = new List<string>();
+            var current = "";
+            var inQuotes = false;
+
+            for (int i = 0; i < line.Length; i++)
+            {
+                char c = line[i];
+
+                if (c == '"')
+                {
+                    if (inQuotes && i + 1 < line.Length && line[i + 1] == '"')
+                    {
+                        // Doppelte Anführungszeichen (Escaped)
+                        current += '"';
+                        i++; // Überspringe das nächste Zeichen
+                    }
+                    else
+                    {
+                        inQuotes = !inQuotes;
+                    }
+                }
+                else if (c == ',' && !inQuotes)
+                {
+                    result.Add(current);
+                    current = "";
+                }
+                else
+                {
+                    current += c;
+                }
+            }
+
+            result.Add(current);
+            return result.ToArray();
+        }
+
+        public void SaveCustomer(Customer customer)
+        {
+            var allCustomers = GetAllCustomers();
+
+            // Erstelle Kundenordner, falls noch nicht vorhanden
+            if (string.IsNullOrEmpty(customer.FolderPath) || !Directory.Exists(customer.FolderPath))
+            {
+                customer.FolderPath = CreateCustomerFolder(customer);
+            }
+
+            // Prüfe ob Kunde bereits existiert
+            var existingCustomer = allCustomers.FirstOrDefault(c => c.CustomerNumber == customer.CustomerNumber);
+            if (existingCustomer != null)
+            {
+                // Aktualisiere existierenden Kunden
+                var index = allCustomers.IndexOf(existingCustomer);
+                allCustomers[index] = customer;
+            }
+            else
+            {
+                // Füge neuen Kunden hinzu
+                allCustomers.Add(customer);
+            }
+
+            // Speichere alle Kunden zurück in CSV
+            SaveAllCustomers(allCustomers);
+        }
+
+        public void SaveAllCustomers(List<Customer> customers)
+        {
+            try
+            {
+                var lines = new List<string>
+                {
+                    "CustomerNumber,FirstName,LastName,Company,Email,Phone,Street,HouseNumber,ZipCode,City,VatId,FolderPath"
+                };
+
+                foreach (var customer in customers.OrderBy(c => c.CustomerNumber))
+                {
+                    var line = $"{customer.CustomerNumber}," +
+                              $"\"{EscapeCsvField(customer.FirstName)}\"," +
+                              $"\"{EscapeCsvField(customer.LastName)}\"," +
+                              $"\"{EscapeCsvField(customer.Company)}\"," +
+                              $"\"{EscapeCsvField(customer.Email)}\"," +
+                              $"\"{EscapeCsvField(customer.Phone)}\"," +
+                              $"\"{EscapeCsvField(customer.Street)}\"," +
+                              $"\"{EscapeCsvField(customer.HouseNumber)}\"," +
+                              $"\"{EscapeCsvField(customer.ZipCode)}\"," +
+                              $"\"{EscapeCsvField(customer.City)}\"," +
+                              $"\"{EscapeCsvField(customer.VatId)}\"," +
+                              $"\"{EscapeCsvField(customer.FolderPath)}\"";
+                    lines.Add(line);
+                }
+
+                File.WriteAllLines(_csvFilePath, lines, Encoding.UTF8);
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"Fehler beim Speichern der Kunden: {ex.Message}");
+            }
+        }
+
+        private string EscapeCsvField(string field)
+        {
+            if (string.IsNullOrEmpty(field))
+                return "";
+
+            // Wenn das Feld Kommas, Zeilenumbrüche oder Anführungszeichen enthält, in Anführungszeichen setzen
+            if (field.Contains(",") || field.Contains("\"") || field.Contains("\n") || field.Contains("\r"))
+            {
+                // Verdopple die Anführungszeichen für Escape
+                field = field.Replace("\"", "\"\"");
+                return field;
+            }
+
+            return field;
+        }
+
+        public int GetNextCustomerNumber()
+        {
+            var customers = GetAllCustomers();
+            return customers.Any() ? customers.Max(c => c.CustomerNumber) + 1 : 1001;
+        }
+
+        public string GetCustomerFolderPath(int customerNumber, string lastName, string firstName)
+        {
+            // NEUE STRUKTUR: C_1001_Mustermann_Max
+            string folderName = $"C_{customerNumber}_{RemoveInvalidFileNameChars(lastName)}_{RemoveInvalidFileNameChars(firstName)}";
+            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                               "PixFrameWorkspace",
+                               "Customers",
+                               folderName);
+        }
+
+        public string GetCustomerFolderPath(Customer customer)
+        {
+            return GetCustomerFolderPath(customer.CustomerNumber, customer.LastName, customer.FirstName);
+        }
+
+        public string CreateCustomerFolder(Customer customer)
+        {
+            try
+            {
+                string customerFolderPath = GetCustomerFolderPath(customer);
+
+                // Hauptordner erstellen
+                Directory.CreateDirectory(customerFolderPath);
+
+                // Standard-Unterordner erstellen
+                CreateCustomerSubfolders(customerFolderPath);
+
+                // Kundeninfo-Datei erstellen
+                CreateCustomerInfoFile(customerFolderPath, customer);
+
+                return customerFolderPath;
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"Fehler beim Erstellen des Kundenordners: {ex.Message}");
+            }
+        }
+
+        private void CreateCustomerSubfolders(string customerFolderPath)
+        {
+            var subfolders = new[]
+            {
+                "01_Projekte",
+                "02_Vertraege",
+                "03_Rechnungen",
+                "04_Korrespondenz",
+                "05_Medien",
+                "06_Sonstiges",
+                "07_Dokumente",
+                "08_Angebote"
+            };
+
+            foreach (var folder in subfolders)
+            {
+                string fullPath = Path.Combine(customerFolderPath, folder);
+                Directory.CreateDirectory(fullPath);
+            }
+        }
+
+        private void CreateCustomerInfoFile(string customerFolderPath, Customer customer)
+        {
+            string infoFilePath = Path.Combine(customerFolderPath, "Kundeninfo.txt");
+            string infoContent = $"KUNDENINFORMATION\n" +
+                               $"================\n" +
+                               $"Kundennummer: {customer.CustomerNumber}\n" +
+                               $"Name: {customer.FirstName} {customer.LastName}\n" +
+                               $"Firma: {(string.IsNullOrEmpty(customer.Company) ? "n/a" : customer.Company)}\n" +
+                               $"E-Mail: {customer.Email}\n" +
+                               $"Telefon: {customer.Phone}\n" +
+                               $"Adresse: {customer.Street} {customer.HouseNumber}, {customer.ZipCode} {customer.City}\n" +
+                               $"USt-ID: {(string.IsNullOrEmpty(customer.VatId) ? "n/a" : customer.VatId)}\n" +
+                               $"Erstellt am: {DateTime.Now:dd.MM.yyyy HH:mm}\n\n" +
+                               $"ORDNERSTRUKTUR:\n" +
+                               $"01_Projekte/     - Alle Projektordner\n" +
+                               $"02_Vertraege/    - Verträge und Vereinbarungen\n" +
+                               $"03_Rechnungen/   - Rechnungen (Eingang/Ausgang)\n" +
+                               $"04_Korrespondenz/- E-Mails, Briefe, Kommunikation\n" +
+                               $"05_Medien/       - Fotos, Videos, Grafiken\n" +
+                               $"06_Sonstiges/    - Diverse Dateien\n" +
+                               $"07_Dokumente/    - Wichtige Dokumente\n" +
+                               $"08_Angebote/     - Angebote und Kostenvoranschläge";
+
+            File.WriteAllText(infoFilePath, infoContent, Encoding.UTF8);
+        }
+
+        public string CreateProjectFolder(Customer customer, Project project)
+        {
+            try
+            {
+                string customerFolderPath = GetCustomerFolderPath(customer);
+                string projectsFolderPath = Path.Combine(customerFolderPath, "01_Projekte");
+
+                // Stelle sicher, dass der Projekte-Ordner existiert
+                Directory.CreateDirectory(projectsFolderPath);
+
+                // Projektordnername: P_1_Hochzeit_15.07.2024
+                string projectFolderName = $"P_{project.ProjectId}_{RemoveInvalidFileNameChars(project.ProjectName)}";
+                string projectFolderPath = Path.Combine(projectsFolderPath, projectFolderName);
+
+                // Projektordner erstellen
+                Directory.CreateDirectory(projectFolderPath);
+
+                // Projekt-Unterordner erstellen
+                CreateProjectSubfolders(projectFolderPath);
+
+                // Projektinfo-Datei erstellen
+                CreateProjectInfoFile(projectFolderPath, customer, project);
+
+                return projectFolderPath;
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"Fehler beim Erstellen des Projektordners: {ex.Message}");
+            }
+        }
+
+        private void CreateProjectSubfolders(string projectFolderPath)
+        {
+            var subfolders = new[]
+            {
+                "01_Fotos",
+                "02_Videos",
+                "03_Rohdaten",
+                "04_Bearbeitet",
+                "05_Export",
+                "06_Dokumente",
+                "07_Rechnungen",
+                "08_Vertraege",
+                "09_Notizen"
+            };
+
+            foreach (var folder in subfolders)
+            {
+                string fullPath = Path.Combine(projectFolderPath, folder);
+                Directory.CreateDirectory(fullPath);
+            }
+        }
+
+        private void CreateProjectInfoFile(string projectFolderPath, Customer customer, Project project)
+        {
+            string infoFilePath = Path.Combine(projectFolderPath, "Projektinfo.txt");
+
+            string gettingReadyText = "n/a";
+            if (project.GettingReady)
+            {
+                var parts = new List<string>();
+                if (project.GettingReadyEr) parts.Add("Er");
+                if (project.GettingReadySie) parts.Add("Sie");
+                if (project.GettingReadyBeide) parts.Add("Beide");
+                gettingReadyText = parts.Any() ? string.Join(", ", parts) : "n/a";
+            }
+
+            string infoContent = $"PROJEKTINFORMATION\n" +
+                               $"=================\n" +
+                               $"Projekt-ID: {project.ProjectId}\n" +
+                               $"Projektname: {project.ProjectName}\n" +
+                               $"Kunde: {customer.FirstName} {customer.LastName}\n" +
+                               $"Kundennummer: {customer.CustomerNumber}\n" +
+                               $"Kategorie: {project.Category}\n" +
+                               $"Status: {project.Status}\n" +
+                               $"Buchungsdatum: {project.Booking?.ToString("dd.MM.yyyy") ?? "n/a"}\n" +
+                               $"Uhrzeit: {project.BookingTime:hh\\:mm}\n" +
+                               $"Ort: {project.Location ?? "n/a"}\n" +
+                               $"Erstellt am: {project.CreatedDate:dd.MM.yyyy HH:mm}\n\n" +
+                               $"DIENSTLEISTUNGEN:\n" +
+                               $"Fotografie: {(project.Fotografie ? "Ja" : "Nein")}\n" +
+                               $"Videografie: {(project.Videografie ? "Ja" : "Nein")}\n" +
+                               $"Danksagungskarten: {(project.Glueckwunschkarten ? "Ja" : "Nein")}\n" +
+                               $"Getting Ready: {(project.GettingReady ? "Ja" : "Nein")}\n" +
+                               $"Getting Ready für: {gettingReadyText}\n\n" +
+                               $"ORDNERSTRUKTUR:\n" +
+                               $"01_Fotos/        - Alle Fotos des Projekts\n" +
+                               $"02_Videos/       - Alle Videos des Projekts\n" +
+                               $"03_Rohdaten/     - Unbearbeitete Originaldateien\n" +
+                               $"04_Bearbeitet/   - Bearbeitete Dateien\n" +
+                               $"05_Export/       - Exportierte Dateien für Kunden\n" +
+                               $"06_Dokumente/    - Projektbezogene Dokumente\n" +
+                               $"07_Rechnungen/   - Rechnungen für dieses Projekt\n" +
+                               $"08_Vertraege/    - Verträge für dieses Projekt\n" +
+                               $"09_Notizen/      - Notizen und Planungen";
+
+            File.WriteAllText(infoFilePath, infoContent, Encoding.UTF8);
+        }
+
+        private string RemoveInvalidFileNameChars(string filename)
+        {
+            if (string.IsNullOrEmpty(filename))
+                return "Unknown";
+
+            var invalidChars = Path.GetInvalidFileNameChars();
+            return new string(filename.Where(ch => !invalidChars.Contains(ch)).ToArray());
+        }
+
+        public bool OpenCustomerFolder(Customer customer)
+        {
+            try
+            {
+                var folderPath = GetCustomerFolderPath(customer);
+
+                // Stelle sicher, dass der Ordner existiert
+                if (!Directory.Exists(folderPath))
+                {
+                    CreateCustomerFolder(customer);
+                }
+
+                // Öffne den Ordner im Datei-Explorer
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo()
+                {
+                    FileName = folderPath,
+                    UseShellExecute = true,
+                    Verb = "open"
+                });
+
+                return true;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        public bool OpenProjectFolder(Customer customer, Project project)
+        {
+            try
+            {
+                var projectFolderPath = CreateProjectFolder(customer, project);
+
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo()
+                {
+                    FileName = projectFolderPath,
+                    UseShellExecute = true,
+                    Verb = "open"
+                });
+
+                return true;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+    }
 }

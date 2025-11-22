@@ -36,7 +36,7 @@ namespace PixFrameWorkspace
             public string FullCustomersPath => Path.Combine(WorkspacePath, CustomersPath);
 
             // Dateinamen
-            public string CustomerDatabaseFile => "Customer.csv";
+            public string CustomerDatabaseFile => "Customers.csv";
             public string ToolsConfigFile => "tools_config.json";
             public string AppConfigFile => "pixframe_config.json";
         }

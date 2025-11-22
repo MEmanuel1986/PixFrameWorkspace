@@ -32,7 +32,7 @@
 
                         <VerticalStackLayout Grid.Row="0" Grid.Column="1" Spacing="2">
                             <Label Text="Nächste Kundennummer:" FontSize="12" FontAttributes="Bold" />
-                            <Label x:Name="NextCustomerNumberLabel" Text="1000" FontSize="14" TextColor="#2C3E50" />
+                            <Label x:Name="NextCustomerNumberLabel" Text="0" FontSize="14" TextColor="#2C3E50" />
                         </VerticalStackLayout>
 
                         <!-- Zeile 2 - Dateigrößen -->
@@ -42,110 +42,39 @@
                         </VerticalStackLayout>
 
                         <VerticalStackLayout Grid.Row="1" Grid.Column="1" Spacing="2">
-                            <Label Text="Backup-Größe:" FontSize="12" FontAttributes="Bold" />
-                            <Label x:Name="BackupSizeLabel" Text="0 B" FontSize="14" TextColor="#2C3E50" />
+                            <Label Text="Gesamtanzahl Projekte:" FontSize="12" FontAttributes="Bold" />
+                            <Label x:Name="ProjectCountLabel" Text="0" FontSize="14" TextColor="#2C3E50" />
                         </VerticalStackLayout>
 
                         <!-- Zeile 3 - Ordner-Größe über beide Spalten -->
                         <VerticalStackLayout Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2" Spacing="2">
-                            <Label Text="Gesamtgröße Kundenordner:" FontSize="12" FontAttributes="Bold" />
-                            <Label x:Name="TotalFoldersSizeLabel" Text="0 B" FontSize="14" TextColor="#2C3E50" />
+                            <Label Text="Größe Medien (Fotos, Videos und Dokumente):" FontSize="12" FontAttributes="Bold" />
+                            <Label x:Name="MediaSizeLabel" Text="0 B" FontSize="14" TextColor="#2C3E50" />
                         </VerticalStackLayout>
                     </Grid>
 
                     <!-- Vollständiger Pfad mit Ordner-Button -->
                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10" VerticalOptions="Center">
                         <Label x:Name="DatabasePathLabel" 
-                   Text="Pfad wird geladen..." 
-                   FontSize="11" 
-                   TextColor="Gray" 
-                   LineBreakMode="TailTruncation"
-                   VerticalOptions="Center"
-                   Grid.Column="0" />
+                            Text="Pfad wird geladen..." 
+                            FontSize="11" 
+                            TextColor="Gray" 
+                            LineBreakMode="TailTruncation"
+                            VerticalOptions="Center"
+                            Grid.Column="0" />
 
                         <Button Grid.Column="1"
-                    Text="Ordner öffnen" 
-                    Clicked="OnOpenDatabaseFolderButtonClicked"
-                    BackgroundColor="Gray"
-                    TextColor="#FFFFFF"
-                    FontSize="11"
-                    Padding="0"
-                    Margin="0" />
-                    </Grid>
-
-                </VerticalStackLayout>
-            </Frame>
-
-            <!-- DATENVERWALTUNG -->
-            <Frame BackgroundColor="#F8F9FA" Padding="15" HasShadow="False">
-                <VerticalStackLayout Spacing="12">
-                    <Label Text="Datenverwaltung" 
-                           FontSize="18" 
-                           FontAttributes="Bold" 
-                           TextColor="#2C3E50" />
-
-                    <!-- Backup Button -->
-                    <Button x:Name="BackupButton" 
-                            Text="Backup erstellen" 
-                            Clicked="OnBackupButtonClicked"
+                            Text="📁 Öffnen" 
+                            Clicked="OnOpenDatabaseFolderButtonClicked"
                             BackgroundColor="#3498DB"
                             TextColor="White"
-                            HeightRequest="40" />
-
-                    <!-- Update Kundenmodell Button -->
-                    <Button x:Name="UpdateModelButton" 
-                            Text="Kundenmodell aktualisieren" 
-                            Clicked="OnUpdateModelButtonClicked"
-                            BackgroundColor="#27AE60"
-                            TextColor="White"
-                            HeightRequest="40" />
-
-                    <!-- Migrations-Button -->
-                    <Button x:Name="MigrationButton" 
-                        Text="Daten migrieren" 
-                        Clicked="OnMigrationButtonClicked"
-                        BackgroundColor="#9B59B6"
-                        TextColor="White"
-                        HeightRequest="40" />
-
-                </VerticalStackLayout>
-            </Frame>
-
-            <!-- GEFAHRENZONE -->
-            <Frame BackgroundColor="#FDEDEC" Padding="15" HasShadow="False" BorderColor="#E74C3C">
-                <VerticalStackLayout Spacing="12">
-                    <Label Text="Gefahrenzone" 
-                           FontSize="18" 
-                           FontAttributes="Bold" 
-                           TextColor="#C0392B" />
-
-                    <Label Text="Diese Aktionen können nicht rückgängig gemacht werden!" 
-                           FontSize="12" 
-                           TextColor="#E74C3C" />
-
-                    <!-- Datenbank löschen -->
-                    <Button x:Name="DeleteDatabaseButton" 
-                            Text="Alle Kundendaten löschen" 
-                            Clicked="OnDeleteDatabaseButtonClicked"
-                            BackgroundColor="#E74C3C"
-                            TextColor="White"
-                            HeightRequest="40" />
-
-                    <!-- Ordner löschen -->
-                    <Button x:Name="DeleteFoldersButton" 
-                            Text="Alle Kundenordner löschen" 
-                            Clicked="OnDeleteFoldersButtonClicked"
-                            BackgroundColor="#E67E22"
-                            TextColor="White"
-                            HeightRequest="40" />
-
-                    <!-- Alles löschen -->
-                    <Button x:Name="DeleteAllButton" 
-                            Text="Alles löschen (Daten + Ordner)" 
-                            Clicked="OnDeleteAllButtonClicked"
-                            BackgroundColor="#C0392B"
-                            TextColor="White"
-                            HeightRequest="40" />
+                            FontSize="12"
+                            HeightRequest="32"
+                            MinimumWidthRequest="100"
+                            Padding="10,0"
+                            Margin="5,0,0,0"
+                            VerticalOptions="Center" />
+                    </Grid>
 
                 </VerticalStackLayout>
             </Frame>
@@ -285,15 +214,7 @@
                             BackgroundColor="#9B59B6"
                             TextColor="White"
                             HeightRequest="40" />
-
-                    <!-- Daten bereinigen -->
-                    <Button x:Name="CleanDataButton" 
-                            Text="Daten bereinigen" 
-                            Clicked="OnCleanDataButtonClicked"
-                            BackgroundColor="#16A085"
-                            TextColor="White"
-                            HeightRequest="40" />
-
+                    
                 </VerticalStackLayout>
             </Frame>
 

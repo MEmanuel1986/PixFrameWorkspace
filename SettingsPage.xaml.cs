@@ -1,10 +1,15 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.Maui.Controls;
+using CsvHelper;
+using System.Globalization;
+using CsvHelper.Configuration;
+using System.Diagnostics;
 
 namespace PixFrameWorkspace
 {
@@ -15,140 +20,317 @@ namespace PixFrameWorkspace
         private string _backupFilePath => AppConfig.GetBackupFilePath();
         private string _customersBasePath => AppConfig.Settings.FullCustomersPath;
         private string _archivePath => AppConfig.Settings.FullArchivePath;
+        private string _workspaceBasePath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "PixFrameWorkspace");
+        private string _dataFolderPath => Path.Combine(_workspaceBasePath, "Data");
+        private string _projectsFilePath => Path.Combine(_dataFolderPath, "projects.csv");
 
         public SettingsPage()
         {
             InitializeComponent();
 
-            // NEUE PFADE: Alles unter Dokumente\PixFrameWorkspace
-            string workspacePath = GetWorkspaceBasePath();
-            
-            // Statistiken laden
-            LoadStatistics();
-
-            // Tools-Konfiguration laden
-            LoadToolsConfiguration();
+            // Verzögerte Initialisierung um UI-Problem zu vermeiden
+            Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(100), () =>
+            {
+                LoadStatistics();
+                LoadToolsConfiguration();
+            });
         }
 
-        private string GetWorkspaceBasePath()
+        protected override void OnAppearing()
         {
-            string documentsPath = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-            string workspacePath = Path.Combine(documentsPath, "PixFrameWorkspace");
+            base.OnAppearing();
+            Debug.WriteLine("=== SettingsPage OnAppearing ===");
+            CheckForOldData();
 
-            // Erstelle alle benötigten Unterordner
-            Directory.CreateDirectory(Path.Combine(workspacePath, "Data"));
-            Directory.CreateDirectory(Path.Combine(workspacePath, "BackUp"));
-            Directory.CreateDirectory(Path.Combine(workspacePath, "Kunden"));
-
-            return workspacePath;
+            // Statistiken neu laden wenn Seite erscheint
+            LoadStatistics();
         }
 
+        #region STATISTIKEN
         private void LoadStatistics()
         {
             try
             {
-                // Anzahl Kunden zählen
-                int customerCount = 0;
-                int nextCustomerNumber = 1000;
-                long databaseSize = 0;
-                long backupSize = 0;
-                long totalFoldersSize = 0;
+                Debug.WriteLine("=== DEBUG: Starte LoadStatistics ===");
 
-                if (File.Exists(_dataFilePath))
+                // Sofortige UI-Updates
+                CustomerCountLabel.Text = "Lade...";
+                NextCustomerNumberLabel.Text = "Lade...";
+
+                // Pfad-Informationen
+                string actualDataPath = _dataFilePath;
+                Debug.WriteLine($"CSV-Pfad: {actualDataPath}");
+                Debug.WriteLine($"Datei existiert: {File.Exists(actualDataPath)}");
+
+                if (!File.Exists(actualDataPath))
                 {
-                    var lines = File.ReadAllLines(_dataFilePath);
-                    customerCount = Math.Max(0, lines.Length - 1); // Header abziehen
-
-                    // Datenbank-Größe berechnen
-                    databaseSize = new FileInfo(_dataFilePath).Length;
-
-                    // Nächste Kundennummer finden
-                    if (lines.Length > 1)
-                    {
-                        var lastLine = lines[^1];
-                        var parts = lastLine.Split(',');
-                        if (parts.Length > 0 && int.TryParse(parts[0], out int lastNumber))
-                        {
-                            nextCustomerNumber = lastNumber + 1;
-                        }
-                    }
+                    Debug.WriteLine("FEHLER: CSV-Datei existiert nicht!");
+                    UpdateStatisticsUI(0, 1000, 0, 0, 0);
+                    return;
                 }
 
-                // Backup-Größe berechnen
-                if (File.Exists(_backupFilePath))
-                {
-                    backupSize = new FileInfo(_backupFilePath).Length;
-                }
+                // Kunden aus CSV laden
+                var customers = SimpleLoadCustomers();
+                int customerCount = customers.Count;
 
-                // Ordner-Größe berechnen (nur wenn der Pfad existiert)
-                if (Directory.Exists(_customersBasePath))
-                {
-                    totalFoldersSize = CalculateDirectorySize(_customersBasePath);
-                }
+                Debug.WriteLine($"DEBUG: {customerCount} Kunden geladen");
 
-                // Labels aktualisieren
-                CustomerCountLabel.Text = customerCount.ToString();
-                NextCustomerNumberLabel.Text = nextCustomerNumber.ToString();
-                DatabaseSizeLabel.Text = FormatFileSize(databaseSize);
-                BackupSizeLabel.Text = FormatFileSize(backupSize);
-                TotalFoldersSizeLabel.Text = FormatFileSize(totalFoldersSize);
+                // Nächste Kundennummer
+                int nextCustomerNumber = CalculateNextCustomerNumber(customers);
+                Debug.WriteLine($"DEBUG: Nächste Kundennummer: {nextCustomerNumber}");
 
-                // Pfad-Button Text setzen (gekürzte Anzeige)
-                string shortPath = _dataFilePath.Length > 50
-                    ? "..." + _dataFilePath.Substring(_dataFilePath.Length - 47)
-                    : _dataFilePath;
-                DatabasePathLabel.Text = _dataFilePath;
+                // Projekte zählen
+                int projectCount = SimpleLoadProjectCount();
+
+                // Größen berechnen
+                long databaseSize = CalculateDatabaseSize();
+                long mediaDocumentsSize = CalculateMediaSize();
+
+                // UI aktualisieren
+                UpdateStatisticsUI(customerCount, nextCustomerNumber, projectCount, databaseSize, mediaDocumentsSize);
+
+                Debug.WriteLine($"=== DEBUG: LoadStatistics abgeschlossen ===");
             }
             catch (Exception ex)
             {
-                DisplayAlert("Fehler", $"Statistiken konnten nicht geladen werden: {ex.Message}", "OK");
+                Debug.WriteLine($"FEHLER in LoadStatistics: {ex.Message}");
+                Debug.WriteLine($"StackTrace: {ex.StackTrace}");
+
+                // Fallback-Werte setzen
+                UpdateStatisticsUI(0, 1000, 0, 0, 0);
+
+                // Fehler anzeigen
+                Dispatcher.Dispatch(async () =>
+                {
+                    await DisplayAlert("Fehler", $"Statistiken konnten nicht geladen werden: {ex.Message}", "OK");
+                });
             }
         }
 
-        // Hilfsmethode zur Berechnung der Verzeichnisgröße
+        private List<Customer> SimpleLoadCustomers()
+        {
+            var customers = new List<Customer>();
+
+            try
+            {
+                string csvPath = _dataFilePath;
+                if (!File.Exists(csvPath))
+                {
+                    Debug.WriteLine("CSV-Datei nicht gefunden: " + csvPath);
+                    return customers;
+                }
+
+                Debug.WriteLine("=== CSV-INHALT ===");
+                var allLines = File.ReadAllLines(csvPath, Encoding.UTF8);
+                Debug.WriteLine($"Anzahl Zeilen: {allLines.Length}");
+
+                if (allLines.Length > 0)
+                {
+                    Debug.WriteLine($"Header: {allLines[0]}");
+                }
+
+                for (int i = 1; i < allLines.Length; i++)
+                {
+                    try
+                    {
+                        string line = allLines[i];
+                        Debug.WriteLine($"Zeile {i}: {line}");
+
+                        // Einfache Aufteilung
+                        string[] fields = line.Split(',');
+
+                        if (fields.Length >= 1)
+                        {
+                            var customer = new Customer();
+
+                            // Kundennummer
+                            if (int.TryParse(fields[0].Trim().Trim('\"'), out int customerNumber))
+                            {
+                                customer.CustomerNumber = customerNumber;
+                                Debug.WriteLine($"Kundennummer erkannt: {customerNumber}");
+                            }
+                            else
+                            {
+                                Debug.WriteLine($"FEHLER: Kundennummer nicht parsbar: '{fields[0]}'");
+                                continue;
+                            }
+
+                            // Einfache Feldzuordnung
+                            if (fields.Length > 1) customer.FirstName = fields[1].Trim().Trim('\"');
+                            if (fields.Length > 2) customer.LastName = fields[2].Trim().Trim('\"');
+                            if (fields.Length > 3) customer.Company = fields[3].Trim().Trim('\"');
+                            if (fields.Length > 4) customer.Email = fields[4].Trim().Trim('\"');
+                            if (fields.Length > 5) customer.Phone = fields[5].Trim().Trim('\"');
+                            if (fields.Length > 6) customer.Street = fields[6].Trim().Trim('\"');
+                            if (fields.Length > 7) customer.HouseNumber = fields[7].Trim().Trim('\"');
+                            if (fields.Length > 8) customer.ZipCode = fields[8].Trim().Trim('\"');
+                            if (fields.Length > 9) customer.City = fields[9].Trim().Trim('\"');
+                            if (fields.Length > 10) customer.VatId = fields[10].Trim().Trim('\"');
+                            if (fields.Length > 11) customer.FolderPath = fields[11].Trim().Trim('\"');
+
+                            customers.Add(customer);
+                            Debug.WriteLine($"Erfolg: Kunde {customer.CustomerNumber} geladen: {customer.FirstName} {customer.LastName}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"Fehler in Zeile {i}: {ex.Message}");
+                    }
+                }
+
+                Debug.WriteLine($"=== SIMPLE LOAD: {customers.Count} Kunden geladen ===");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"FEHLER in SimpleLoadCustomers: {ex.Message}");
+            }
+
+            return customers;
+        }
+
+        private void UpdateStatisticsUI(int customerCount, int nextCustomerNumber, int projectCount, long databaseSize, long mediaSize)
+        {
+            // UI-Update muss im Main Thread erfolgen
+            Dispatcher.Dispatch(() =>
+            {
+                try
+                {
+                    CustomerCountLabel.Text = customerCount.ToString();
+                    NextCustomerNumberLabel.Text = nextCustomerNumber.ToString();
+                    ProjectCountLabel.Text = projectCount.ToString();
+                    DatabaseSizeLabel.Text = FormatFileSize(databaseSize);
+                    MediaSizeLabel.Text = FormatFileSize(mediaSize);
+
+                    // VOLLSTÄNDIGER PFAD statt gekürzt
+                    DatabasePathLabel.Text = _workspaceBasePath;
+
+                    Debug.WriteLine($"UI Update: Kunden={customerCount}, NächsteNr={nextCustomerNumber}");
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"Fehler beim UI-Update: {ex.Message}");
+                }
+            });
+        }
+
+        private int CalculateNextCustomerNumber(List<Customer> customers)
+        {
+            try
+            {
+                if (customers == null || !customers.Any())
+                {
+                    Debug.WriteLine("DEBUG: Keine Kunden, gebe 1000 zurück");
+                    return 1000;
+                }
+
+                // Finde die höchste Kundennummer
+                int maxCustomerNumber = customers.Max(c => c.CustomerNumber);
+                int nextNumber = maxCustomerNumber + 1;
+
+                Debug.WriteLine($"DEBUG CalculateNextCustomerNumber: Max={maxCustomerNumber}, Next={nextNumber}");
+                return nextNumber;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Fehler in CalculateNextCustomerNumber: {ex.Message}");
+                return 1000 + (customers?.Count ?? 0);
+            }
+        }
+
+        private int SimpleLoadProjectCount()
+        {
+            try
+            {
+                if (!File.Exists(_projectsFilePath))
+                    return 0;
+
+                var lines = File.ReadAllLines(_projectsFilePath);
+                return Math.Max(0, lines.Length - 1);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Fehler beim Laden der Projekte: {ex.Message}");
+                return 0;
+            }
+        }
+
+        private long CalculateDatabaseSize()
+        {
+            try
+            {
+                if (!Directory.Exists(_dataFolderPath))
+                    return 0;
+
+                long size = 0;
+                var csvFiles = Directory.GetFiles(_dataFolderPath, "*.csv");
+                foreach (var file in csvFiles)
+                {
+                    var fileInfo = new FileInfo(file);
+                    if (fileInfo.Exists)
+                    {
+                        size += fileInfo.Length;
+                    }
+                }
+                return size;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Fehler beim Berechnen der DB-Größe: {ex.Message}");
+                return 0;
+            }
+        }
+
+        private long CalculateMediaSize()
+        {
+            try
+            {
+                if (!Directory.Exists(_customersBasePath))
+                    return 0;
+
+                return CalculateDirectorySize(_customersBasePath);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Fehler beim Berechnen der Media-Größe: {ex.Message}");
+                return 0;
+            }
+        }
+
         private long CalculateDirectorySize(string directoryPath)
         {
             long size = 0;
             try
             {
-                // Alle Dateien im aktuellen Verzeichnis
-                foreach (string file in Directory.GetFiles(directoryPath))
+                if (!Directory.Exists(directoryPath))
+                    return 0;
+
+                foreach (string file in Directory.GetFiles(directoryPath, "*", SearchOption.AllDirectories))
                 {
                     try
                     {
                         var fileInfo = new FileInfo(file);
-                        size += fileInfo.Length;
+                        if (fileInfo.Exists)
+                        {
+                            size += fileInfo.Length;
+                        }
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"Fehler beim Lesen der Datei {file}: {ex.Message}");
-                    }
-                }
-
-                // Rekursiv Unterverzeichnisse durchsuchen
-                foreach (string subDirectory in Directory.GetDirectories(directoryPath))
-                {
-                    try
-                    {
-                        size += CalculateDirectorySize(subDirectory);
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"Fehler beim Lesen des Verzeichnisses {subDirectory}: {ex.Message}");
+                        Debug.WriteLine($"Fehler beim Lesen der Datei {file}: {ex.Message}");
                     }
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Fehler beim Berechnen der Verzeichnisgröße: {ex.Message}");
+                Debug.WriteLine($"Fehler beim Berechnen der Verzeichnisgröße: {ex.Message}");
             }
-
             return size;
         }
 
-        // Hilfsmethode zur Formatierung der Dateigröße
         private string FormatFileSize(long bytes)
         {
+            if (bytes == 0) return "0 B";
+
             string[] suffixes = { "B", "KB", "MB", "GB", "TB" };
             int counter = 0;
             decimal number = bytes;
@@ -157,105 +339,34 @@ namespace PixFrameWorkspace
             {
                 number /= 1024;
                 counter++;
+                if (counter == suffixes.Length - 1) break;
             }
 
             return $"{number:n1} {suffixes[counter]}";
         }
+        #endregion
 
-        // BACKUP FUNKTION
-        private async void OnBackupButtonClicked(object sender, EventArgs e)
-        {
-            try
-            {
-                if (File.Exists(_dataFilePath))
-                {
-                    File.Copy(_dataFilePath, _backupFilePath, overwrite: true);
-                    await DisplayAlert("Backup",
-                        $"Backup wurde erfolgreich erstellt!\n\nPfad: {_backupFilePath}",
-                        "OK");
-
-                    // Statistiken neu laden um Backup-Größe zu aktualisieren
-                    LoadStatistics();
-                }
-                else
-                {
-                    await DisplayAlert("Backup", "Keine Kundendaten zum Backup vorhanden.", "OK");
-                }
-            }
-            catch (Exception ex)
-            {
-                await DisplayAlert("Fehler", $"Backup fehlgeschlagen: {ex.Message}", "OK");
-            }
-        }
-
-        // UPDATE KUNDENMODELL
-        private async void OnUpdateModelButtonClicked(object sender, EventArgs e)
-        {
-            bool answer = await DisplayAlert("Kundenmodell aktualisieren",
-                "Möchten Sie für alle bestehenden Kunden Ordner erstellen?\n\n" +
-                "Dies wird für jeden Kunden einen Ordner mit der Standard-Struktur anlegen.",
-                "Ja, fortfahren", "Abbrechen");
-
-            if (!answer) return;
-
-            try
-            {
-                int createdFolders = 0;
-                var customers = LoadCustomersFromCsv();
-
-                foreach (var customer in customers)
-                {
-                    string customerFolderPath = GetCustomerFolderPath(customer);
-
-                    if (!Directory.Exists(customerFolderPath))
-                    {
-                        Directory.CreateDirectory(customerFolderPath);
-                        CreateSubfolders(customerFolderPath);
-                        CreateCustomerInfoFile(customerFolderPath, customer);
-                        createdFolders++;
-                    }
-                }
-
-                await DisplayAlert("Erfolg",
-                    $"{createdFolders} Kundenordner wurden erstellt.",
-                    "OK");
-
-                LoadStatistics(); // Statistiken aktualisieren
-            }
-            catch (Exception ex)
-            {
-                await DisplayAlert("Fehler",
-                    $"Update fehlgeschlagen: {ex.Message}",
-                    "OK");
-            }
-        }
-
-        // DATENBANK-ORDNER ÖFFNEN - OHNE POPUP
+        #region ORDNER FUNKTIONEN
         private async void OnOpenDatabaseFolderButtonClicked(object sender, EventArgs e)
         {
             try
             {
-                // Der AppData-Ordner, wo die CSV-Datei gespeichert ist
-                string databaseFolder = FileSystem.AppDataDirectory;
-
-                if (Directory.Exists(databaseFolder))
+                // Öffne den Workspace-Ordner (Dokumente\PixFrameWorkspace)
+                if (Directory.Exists(_workspaceBasePath))
                 {
-                    bool success = await OpenFolder(databaseFolder);
-
-                    // Kein Popup mehr bei Erfolg - nur im Fehlerfall
+                    bool success = await OpenFolder(_workspaceBasePath);
                     if (!success)
                     {
-                        // Fallback: Pfad anzeigen
+                        // Fallback: Zeige Pfad an
                         await DisplayAlert("Info",
-                            $"Datenbank-Ordner konnte nicht geöffnet werden:\n{databaseFolder}\n\n" +
-                            $"Datei: {Path.GetFileName(_dataFilePath)}",
+                            $"Workspace-Ordner:\n{_workspaceBasePath}",
                             "OK");
                     }
                 }
                 else
                 {
-                    await DisplayAlert("Fehler",
-                        "Datenbank-Ordner existiert nicht.",
+                    await DisplayAlert("Info",
+                        "Workspace-Ordner existiert noch nicht. Er wird beim ersten Speichern automatisch erstellt.",
                         "OK");
                 }
             }
@@ -267,314 +378,48 @@ namespace PixFrameWorkspace
             }
         }
 
-        // Hilfsmethode zum Öffnen von Ordnern (plattformübergreifend)
         private async Task<bool> OpenFolder(string folderPath)
         {
             try
             {
                 if (DeviceInfo.Platform == DevicePlatform.WinUI)
                 {
-                    // Windows: Explorer öffnen
-                    System.Diagnostics.Process.Start("explorer", folderPath);
+                    // Windows: Explorer öffnen und Ordner auswählen
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = "explorer.exe",
+                        Arguments = $"\"{folderPath}\"",
+                        UseShellExecute = true
+                    });
                     return true;
                 }
                 else if (DeviceInfo.Platform == DevicePlatform.MacCatalyst)
                 {
                     // macOS: Finder öffnen
-                    System.Diagnostics.Process.Start("open", folderPath);
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = "open",
+                        Arguments = $"\"{folderPath}\"",
+                        UseShellExecute = true
+                    });
                     return true;
                 }
                 else
                 {
                     // Fallback für andere Plattformen
-                    var result = await Launcher.Default.OpenAsync($"file://{folderPath}");
-                    return result;
+                    await Launcher.Default.OpenAsync($"file://{folderPath}");
+                    return true;
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Fehler beim Öffnen des Ordners: {ex.Message}");
+                Debug.WriteLine($"Fehler beim Öffnen des Ordners: {ex.Message}");
                 return false;
             }
         }
+        #endregion
 
-        // DATENBANK LÖSCHEN
-        private async void OnDeleteDatabaseButtonClicked(object sender, EventArgs e)
-        {
-            bool answer = await DisplayAlert("⚠️ Alle Kundendaten löschen",
-                "MÖCHTEN SIE WIRKLICH ALLE KUNDENDATEN LÖSCHEN?\n\n" +
-                "• CSV-Datei mit allen Kundendaten wird gelöscht\n" +
-                "• Backup-Datei wird gelöscht\n" +
-                "• Kundenordner bleiben erhalten\n" +
-                "• Diese Aktion kann nicht rückgängig gemacht werden!",
-                "JA, LÖSCHEN", "Abbrechen");
-
-            if (!answer) return;
-
-            try
-            {
-                // CSV-Datei löschen
-                if (File.Exists(_dataFilePath))
-                {
-                    File.Delete(_dataFilePath);
-                }
-
-                // Backup-Datei löschen
-                if (File.Exists(_backupFilePath))
-                {
-                    File.Delete(_backupFilePath);
-                }
-
-                await DisplayAlert("Erfolg",
-                    "Alle Kundendaten wurden gelöscht.\n\nDie Kundenordner bleiben erhalten.",
-                    "OK");
-
-                LoadStatistics(); // Statistiken aktualisieren
-            }
-            catch (Exception ex)
-            {
-                await DisplayAlert("Fehler",
-                    $"Löschen fehlgeschlagen: {ex.Message}",
-                    "OK");
-            }
-        }
-
-        // ORDNER LÖSCHEN
-        private async void OnDeleteFoldersButtonClicked(object sender, EventArgs e)
-        {
-            bool answer = await DisplayAlert("⚠️ Alle Kundenordner löschen",
-                "MÖCHTEN SIE WIRKLICH ALLE KUNDENORDNER LÖSCHEN?\n\n" +
-                "• Alle Kundenordner werden gelöscht\n" +
-                "• Kundendaten (CSV) bleiben erhalten\n" +
-                "• Diese Aktion kann nicht rückgängig gemacht werden!",
-                "JA, LÖSCHEN", "Abbrechen");
-
-            if (!answer) return;
-
-            try
-            {
-                int deletedFolders = 0;
-
-                if (Directory.Exists(_customersBasePath))
-                {
-                    var customerFolders = Directory.GetDirectories(_customersBasePath);
-
-                    foreach (var folder in customerFolders)
-                    {
-                        Directory.Delete(folder, recursive: true);
-                        deletedFolders++;
-                    }
-                }
-
-                await DisplayAlert("Erfolg",
-                    $"{deletedFolders} Kundenordner wurden gelöscht.\n\nDie Kundendaten (CSV) bleiben erhalten.",
-                    "OK");
-
-                LoadStatistics();
-            }
-            catch (Exception ex)
-            {
-                await DisplayAlert("Fehler",
-                    $"Löschen fehlgeschlagen: {ex.Message}",
-                    "OK");
-            }
-        }
-
-        // ALLES LÖSCHEN
-        private async void OnDeleteAllButtonClicked(object sender, EventArgs e)
-        {
-            bool answer = await DisplayAlert("💥 ALLES LÖSCHEN",
-                "SIND SIE SICH ABSOLUT SICHER?\n\n" +
-                "• Alle Kundendaten (CSV) werden gelöscht\n" +
-                "• Alle Kundenordner werden gelöscht\n" +
-                "• Backup wird gelöscht\n" +
-                "• ALLES WIRD KOMPLETT ENTFERNT!\n\n" +
-                "Diese Aktion kann nicht rückgängig gemacht werden!",
-                "JA, ALLES LÖSCHEN", "Abbrechen");
-
-            if (!answer) return;
-
-            // Zweite Sicherheitsabfrage
-            bool finalAnswer = await DisplayAlert("LETZTE BESTÄTIGUNG",
-                "Sind Sie sich zu 100% sicher? ALLE DATEN WERDEN UNWIEDERBRINGLICH GELÖSCHT!",
-                "JA, ICH BIN MIR SICHER", "NEIN, ABBRECHEN");
-
-            if (!finalAnswer) return;
-
-            try
-            {
-                int deletedFolders = 0;
-
-                // CSV und Backup löschen
-                if (File.Exists(_dataFilePath)) File.Delete(_dataFilePath);
-                if (File.Exists(_backupFilePath)) File.Delete(_backupFilePath);
-
-                // Ordner löschen
-                if (Directory.Exists(_customersBasePath))
-                {
-                    var customerFolders = Directory.GetDirectories(_customersBasePath);
-                    deletedFolders = customerFolders.Length;
-
-                    foreach (var folder in customerFolders)
-                    {
-                        Directory.Delete(folder, recursive: true);
-                    }
-                }
-
-                await DisplayAlert("Erfolg",
-                    $"Alles wurde gelöscht:\n• {deletedFolders} Kundenordner\n• Kundendatenbank\n• Backup",
-                    "OK");
-
-                LoadStatistics();
-            }
-            catch (Exception ex)
-            {
-                await DisplayAlert("Fehler",
-                    $"Löschen fehlgeschlagen: {ex.Message}",
-                    "OK");
-            }
-        }
-
-        private string GetCustomerFolderPath(int customerNumber, string lastName, string firstName)
-        {
-            // NEUE STRUKTUR: C_1001
-            string folderName = $"C_{customerNumber}";
-            return Path.Combine(_customersBasePath, folderName);
-        }
-
-        // HILFSMETHODEN
-        private List<Customer> LoadCustomersFromCsv()
-        {
-            var customers = new List<Customer>();
-
-            if (File.Exists(_dataFilePath))
-            {
-                var lines = File.ReadAllLines(_dataFilePath, Encoding.UTF8);
-
-                for (int i = 1; i < lines.Length; i++) // Header überspringen
-                {
-                    var line = lines[i];
-                    var parts = line.Split(',');
-
-                    if (parts.Length >= 12) // Jetzt 12 Spalten
-                    {
-                        var customer = new Customer
-                        {
-                            CustomerNumber = int.Parse(parts[0]),
-                            FirstName = UnescapeCsvField(parts[1]),
-                            LastName = UnescapeCsvField(parts[2]),
-                            Company = UnescapeCsvField(parts[3]),
-                            Email = UnescapeCsvField(parts[4]),
-                            Phone = UnescapeCsvField(parts[5]),
-                            Street = UnescapeCsvField(parts[6]),
-                            HouseNumber = UnescapeCsvField(parts[7]),
-                            ZipCode = UnescapeCsvField(parts[8]),
-                            City = UnescapeCsvField(parts[9]),
-                            VatId = UnescapeCsvField(parts[10]),
-                            FolderPath = UnescapeCsvField(parts[11]) // NEUE SPALTE
-                        };
-                        customers.Add(customer);
-                    }
-                    else if (parts.Length >= 11)
-                    {
-                        // Fallback für alte CSV ohne FolderPath
-                        var customer = new Customer
-                        {
-                            CustomerNumber = int.Parse(parts[0]),
-                            FirstName = UnescapeCsvField(parts[1]),
-                            LastName = UnescapeCsvField(parts[2]),
-                            Company = UnescapeCsvField(parts[3]),
-                            Email = UnescapeCsvField(parts[4]),
-                            Phone = UnescapeCsvField(parts[5]),
-                            Street = UnescapeCsvField(parts[6]),
-                            HouseNumber = UnescapeCsvField(parts[7]),
-                            ZipCode = UnescapeCsvField(parts[8]),
-                            City = UnescapeCsvField(parts[9]),
-                            VatId = UnescapeCsvField(parts[10]),
-                            FolderPath = GetCustomerFolderPath(int.Parse(parts[0]), UnescapeCsvField(parts[2]), UnescapeCsvField(parts[1]))
-                        };
-                        customers.Add(customer);
-                    }
-                }
-            }
-
-            return customers;
-        }
-
-        private string UnescapeCsvField(string field)
-        {
-            if (string.IsNullOrEmpty(field)) return string.Empty;
-
-            if (field.StartsWith("\"") && field.EndsWith("\""))
-            {
-                field = field.Substring(1, field.Length - 2);
-                field = field.Replace("\"\"", "\"");
-            }
-            return field;
-        }
-
-        private string EscapeCsvField(string field)
-        {
-            if (string.IsNullOrEmpty(field)) return "";
-            if (field.Contains(",") || field.Contains("\"") || field.Contains("\n"))
-            {
-                return $"\"{field.Replace("\"", "\"\"")}\"";
-            }
-            return field;
-        }
-
-        private string GetCustomerFolderPath(Customer customer)
-        {
-            string folderName = $"Kunde_{customer.CustomerNumber}_{customer.LastName}_{customer.FirstName}";
-            foreach (char invalidChar in Path.GetInvalidFileNameChars())
-            {
-                folderName = folderName.Replace(invalidChar, '_');
-            }
-            return Path.Combine(_customersBasePath, folderName);
-        }
-
-        private void CreateSubfolders(string customerFolderPath)
-        {
-            var subfolders = new[]
-            {
-                "01_Projects",      // Hier werden die Projektordner angelegt
-                "02_Miscellaneous", // Allgemeine Dateien zum Kunden
-                "03_Finance"        // Finanzdokumente (nicht projektgebunden)
-            };
-
-            foreach (var folder in subfolders)
-            {
-                string fullPath = Path.Combine(customerFolderPath, folder);
-                Directory.CreateDirectory(fullPath);
-            }
-        }
-
-        private void CreateCustomerInfoFile(string customerFolderPath, Customer customer)
-        {
-            string infoFilePath = Path.Combine(customerFolderPath, "Kundeninfo.txt");
-            string infoContent = $"KUNDENINFORMATION\n" +
-                               $"================\n" +
-                               $"Kundennummer: {customer.CustomerNumber}\n" +
-                               $"Name: {customer.FirstName} {customer.LastName}\n" +
-                               $"Firma: {(string.IsNullOrEmpty(customer.Company) ? "n/a" : customer.Company)}\n" +
-                               $"E-Mail: {customer.Email}\n" +
-                               $"Telefon: {customer.Phone}\n" +
-                               $"Adresse: {customer.Street} {customer.HouseNumber}, {customer.ZipCode} {customer.City}\n" +
-                               $"USt-ID: {(string.IsNullOrEmpty(customer.VatId) ? "n/a" : customer.VatId)}\n" +
-                               $"Nachträglich erstellt am: {DateTime.Now:dd.MM.yyyy HH:mm}\n\n" +
-                               $"ORDNERSTRUKTUR:\n" +
-                               $"01_Projekte/     - Alle Projektdateien\n" +
-                               $"02_Rechnungen/   - Rechnungen (Eingang/Ausgang)\n" +
-                               $"03_Vertraege/    - Verträge und Vereinbarungen\n" +
-                               $"04_Korrespondenz/- E-Mails, Briefe, Kommunikation\n" +
-                               $"05_Medien/       - Fotos, Videos, Grafiken, Präsentationen\n" +
-                               $"06_Sonstiges/    - Diverse Dateien\n" +
-                               $"07_Dokumente/    - Wichtige Dokumente\n" +
-                               $"08_Angebote/     - Angebote und Kostenvoranschläge";
-
-            File.WriteAllText(infoFilePath, infoContent, Encoding.UTF8);
-        }
-
+        #region TOOLS KONFIGURATION
         private void LoadToolsConfiguration()
         {
             try
@@ -590,19 +435,19 @@ namespace PixFrameWorkspace
                         PhotoshopCheckBox.IsChecked = toolsConfig.GetValueOrDefault("Photoshop", false);
                         LightroomCheckBox.IsChecked = toolsConfig.GetValueOrDefault("Lightroom", false);
                         GimpCheckBox.IsChecked = toolsConfig.GetValueOrDefault("GIMP", false);
-                        AffinityPhotoCheckBox.IsChecked = toolsConfig.GetValueOrDefault("AffinityPhoto", false);
-                        DavinciResolveCheckBox.IsChecked = toolsConfig.GetValueOrDefault("DaVinciResolve", false);
+                        AffinityPhotoCheckBox.IsChecked = toolsConfig.GetValueOrDefault("Affinity Photo", false);
+                        DavinciResolveCheckBox.IsChecked = toolsConfig.GetValueOrDefault("DaVinci Resolve", false);
                         IMovieCheckBox.IsChecked = toolsConfig.GetValueOrDefault("iMovie", false);
-                        PremiereProCheckBox.IsChecked = toolsConfig.GetValueOrDefault("PremierePro", false);
-                        FinalCutProCheckBox.IsChecked = toolsConfig.GetValueOrDefault("FinalCutPro", false);
-                        CaptureOneCheckBox.IsChecked = toolsConfig.GetValueOrDefault("CaptureOne", false);
+                        PremiereProCheckBox.IsChecked = toolsConfig.GetValueOrDefault("Premiere Pro", false);
+                        FinalCutProCheckBox.IsChecked = toolsConfig.GetValueOrDefault("Final Cut Pro", false);
+                        CaptureOneCheckBox.IsChecked = toolsConfig.GetValueOrDefault("Capture One", false);
                         CamerabagCheckBox.IsChecked = toolsConfig.GetValueOrDefault("Camerabag", false);
                     }
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Fehler beim Laden der Tools-Konfiguration: {ex.Message}");
+                Debug.WriteLine($"Fehler beim Laden der Tools-Konfiguration: {ex.Message}");
             }
         }
 
@@ -615,16 +460,24 @@ namespace PixFrameWorkspace
                     ["Photoshop"] = PhotoshopCheckBox.IsChecked,
                     ["Lightroom"] = LightroomCheckBox.IsChecked,
                     ["GIMP"] = GimpCheckBox.IsChecked,
-                    ["AffinityPhoto"] = AffinityPhotoCheckBox.IsChecked,
-                    ["DaVinciResolve"] = DavinciResolveCheckBox.IsChecked,
+                    ["Affinity Photo"] = AffinityPhotoCheckBox.IsChecked,
+                    ["DaVinci Resolve"] = DavinciResolveCheckBox.IsChecked,
                     ["iMovie"] = IMovieCheckBox.IsChecked,
-                    ["PremierePro"] = PremiereProCheckBox.IsChecked,
-                    ["FinalCutPro"] = FinalCutProCheckBox.IsChecked,
-                    ["CaptureOne"] = CaptureOneCheckBox.IsChecked,
+                    ["Premiere Pro"] = PremiereProCheckBox.IsChecked,
+                    ["Final Cut Pro"] = FinalCutProCheckBox.IsChecked,
+                    ["Capture One"] = CaptureOneCheckBox.IsChecked,
                     ["Camerabag"] = CamerabagCheckBox.IsChecked
                 };
 
                 var json = JsonSerializer.Serialize(toolsConfig, new JsonSerializerOptions { WriteIndented = true });
+
+                // Tools-Config Ordner sicherstellen
+                var toolsDir = Path.GetDirectoryName(_toolsConfigPath);
+                if (!Directory.Exists(toolsDir))
+                {
+                    Directory.CreateDirectory(toolsDir);
+                }
+
                 File.WriteAllText(_toolsConfigPath, json, Encoding.UTF8);
 
                 await DisplayAlert("Erfolg", "Tool-Konfiguration wurde gespeichert!", "OK");
@@ -634,13 +487,14 @@ namespace PixFrameWorkspace
                 await DisplayAlert("Fehler", $"Speichern fehlgeschlagen: {ex.Message}", "OK");
             }
         }
+        #endregion
 
-        // JSON EXPORT
+        #region JSON EXPORT & IMPORT
         private async void OnExportJsonButtonClicked(object sender, EventArgs e)
         {
             try
             {
-                var customers = LoadCustomersFromCsv();
+                var customers = SimpleLoadCustomers();
                 if (customers.Count == 0)
                 {
                     await DisplayAlert("Export", "Keine Kundendaten zum Exportieren vorhanden.", "OK");
@@ -655,8 +509,14 @@ namespace PixFrameWorkspace
 
                 string jsonData = JsonSerializer.Serialize(customers, options);
 
-                // Export-Pfad im Dokumente-Ordner
-                string exportPath = Path.Combine(_customersBasePath, $"kunden_export_{DateTime.Now:yyyyMMdd_HHmmss}.json");
+                // Export-Pfad im Workspace-Ordner
+                string exportDir = Path.Combine(_workspaceBasePath, "Exports");
+                if (!Directory.Exists(exportDir))
+                {
+                    Directory.CreateDirectory(exportDir);
+                }
+
+                string exportPath = Path.Combine(exportDir, $"kunden_export_{DateTime.Now:yyyyMMdd_HHmmss}.json");
                 File.WriteAllText(exportPath, jsonData, Encoding.UTF8);
 
                 await DisplayAlert("Export erfolgreich",
@@ -670,7 +530,6 @@ namespace PixFrameWorkspace
             }
         }
 
-        // JSON IMPORT
         private async void OnImportJsonButtonClicked(object sender, EventArgs e)
         {
             try
@@ -681,8 +540,8 @@ namespace PixFrameWorkspace
                     FileTypes = new FilePickerFileType(
                         new Dictionary<DevicePlatform, IEnumerable<string>>
                         {
-                    { DevicePlatform.WinUI, new[] { ".json" } },
-                    { DevicePlatform.MacCatalyst, new[] { ".json" } }
+                            { DevicePlatform.WinUI, new[] { ".json" } },
+                            { DevicePlatform.MacCatalyst, new[] { ".json" } }
                         })
                 });
 
@@ -704,14 +563,27 @@ namespace PixFrameWorkspace
 
                 if (!answer) return;
 
+                // Bestehende Kundennummern ermitteln
+                var existingCustomers = SimpleLoadCustomers();
+                var existingCustomerNumbers = new HashSet<int>(existingCustomers.Select(c => c.CustomerNumber));
+
+                // Neue Kunden filtern (keine Duplikate)
+                var newCustomers = customers.Where(c => !existingCustomerNumbers.Contains(c.CustomerNumber)).ToList();
+
+                if (newCustomers.Count == 0)
+                {
+                    await DisplayAlert("Import", "Alle Kunden in der Importdatei existieren bereits.", "OK");
+                    return;
+                }
+
                 // CSV-Header falls Datei nicht existiert
                 if (!File.Exists(_dataFilePath))
                 {
-                    File.WriteAllText(_dataFilePath, "Kundennummer,Vorname,Nachname,Firma,Email,Telefon,Straße,Hausnummer,PLZ,Ort,UStID\n", Encoding.UTF8);
+                    File.WriteAllText(_dataFilePath, "CustomerNumber,FirstName,LastName,Company,Email,Phone,Street,HouseNumber,ZipCode,City,VatId,FolderPath\n", Encoding.UTF8);
                 }
 
-                // Kunden zur CSV hinzufügen
-                foreach (var customer in customers)
+                // Neue Kunden zur CSV hinzufügen
+                foreach (var customer in newCustomers)
                 {
                     var csvLine = $"{customer.CustomerNumber}," +
                                  $"{EscapeCsvField(customer.FirstName)}," +
@@ -723,13 +595,15 @@ namespace PixFrameWorkspace
                                  $"{EscapeCsvField(customer.HouseNumber)}," +
                                  $"{EscapeCsvField(customer.ZipCode)}," +
                                  $"{EscapeCsvField(customer.City)}," +
-                                 $"{EscapeCsvField(customer.VatId)}";
+                                 $"{EscapeCsvField(customer.VatId)}," +
+                                 $"{EscapeCsvField(customer.FolderPath)}";
 
                     File.AppendAllText(_dataFilePath, csvLine + "\n", Encoding.UTF8);
                 }
 
                 await DisplayAlert("Import erfolgreich",
-                    $"{customers.Count} Kunden wurden importiert.", "OK");
+                    $"{newCustomers.Count} von {customers.Count} Kunden wurden importiert.\n\n" +
+                    $"{customers.Count - newCustomers.Count} Kunden wurden übersprungen (bereits vorhanden).", "OK");
 
                 LoadStatistics();
             }
@@ -738,217 +612,30 @@ namespace PixFrameWorkspace
                 await DisplayAlert("Fehler", $"Import fehlgeschlagen: {ex.Message}", "OK");
             }
         }
+        #endregion
 
-        // DATEN BEREINIGEN
-        private async void OnCleanDataButtonClicked(object sender, EventArgs e)
+        #region HILFSMETHODEN
+        private string EscapeCsvField(string field)
         {
-            try
+            if (string.IsNullOrEmpty(field)) return "";
+            if (field.Contains(",") || field.Contains("\"") || field.Contains("\n"))
             {
-                bool answer = await DisplayAlert("Daten bereinigen",
-                    "Möchten Sie die Kundendaten bereinigen?\n\n" +
-                    "Dies wird:\n" +
-                    "• Doppelte Kunden entfernen\n" +
-                    "• Ungültige E-Mails prüfen\n" +
-                    "• Leere Datensätze entfernen",
-                    "Ja, bereinigen", "Abbrechen");
-
-                if (!answer) return;
-
-                var customers = LoadCustomersFromCsv();
-                if (customers.Count == 0)
-                {
-                    await DisplayAlert("Bereinigen", "Keine Kundendaten zum Bereinigen vorhanden.", "OK");
-                    return;
-                }
-
-                // Doppelte Kunden entfernen (basierend auf Kundennummer)
-                var uniqueCustomers = customers
-                    .GroupBy(c => c.CustomerNumber)
-                    .Select(g => g.First())
-                    .ToList();
-
-                // Ungültige E-Mails markieren
-                var invalidEmails = uniqueCustomers
-                    .Where(c => !IsValidEmail(c.Email))
-                    .ToList();
-
-                if (invalidEmails.Count > 0)
-                {
-                    await DisplayAlert("Ungültige E-Mails",
-                        $"{invalidEmails.Count} Kunden haben ungültige E-Mail-Adressen:\n\n" +
-                        string.Join("\n", invalidEmails.Select(c => $"{c.CustomerNumber}: {c.Email}")),
-                        "OK");
-                }
-
-                // Bereinigte Daten speichern
-                if (uniqueCustomers.Count < customers.Count || invalidEmails.Count > 0)
-                {
-                    // Neue CSV erstellen
-                    var lines = new List<string>
-                    {
-                        "Kundennummer,Vorname,Nachname,Firma,Email,Telefon,Straße,Hausnummer,PLZ,Ort,UStID"
-                    };
-
-                    foreach (var customer in uniqueCustomers)
-                    {
-                        var line = $"{customer.CustomerNumber}," +
-                                  $"{EscapeCsvField(customer.FirstName)}," +
-                                  $"{EscapeCsvField(customer.LastName)}," +
-                                  $"{EscapeCsvField(customer.Company)}," +
-                                  $"{EscapeCsvField(customer.Email)}," +
-                                  $"{EscapeCsvField(customer.Phone)}," +
-                                  $"{EscapeCsvField(customer.Street)}," +
-                                  $"{EscapeCsvField(customer.HouseNumber)}," +
-                                  $"{EscapeCsvField(customer.ZipCode)}," +
-                                  $"{EscapeCsvField(customer.City)}," +
-                                  $"{EscapeCsvField(customer.VatId)}";
-                        lines.Add(line);
-                    }
-
-                    // Backup der alten Datei
-                    string backupPath = _dataFilePath + $".backup_{DateTime.Now:yyyyMMdd_HHmmss}";
-                    File.Copy(_dataFilePath, backupPath, true);
-
-                    // Neue Datei schreiben
-                    File.WriteAllLines(_dataFilePath, lines, Encoding.UTF8);
-
-                    int removedCount = customers.Count - uniqueCustomers.Count;
-                    await DisplayAlert("Bereinigung abgeschlossen",
-                        $"Daten wurden bereinigt:\n" +
-                        $"{removedCount} doppelte Kunden entfernt\n" +
-                        $"{invalidEmails.Count} ungültige E-Mails gefunden\n" +
-                        $"Backup erstellt: {Path.GetFileName(backupPath)}",
-                        "OK");
-                }
-                else
-                {
-                    await DisplayAlert("Bereinigung", "Keine Bereinigung notwendig - Daten sind bereits in Ordnung.", "OK");
-                }
-
-                LoadStatistics();
+                return $"\"{field.Replace("\"", "\"\"")}\"";
             }
-            catch (Exception ex)
-            {
-                await DisplayAlert("Fehler", $"Bereinigung fehlgeschlagen: {ex.Message}", "OK");
-            }
+            return field;
         }
 
-        // HILFSMETHODEN
-        private bool IsValidEmail(string email)
-        {
-            if (string.IsNullOrWhiteSpace(email))
-                return false;
-
-            try
-            {
-                var addr = new System.Net.Mail.MailAddress(email);
-                return addr.Address == email;
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        // Migrations-Button Handler
-        private async void OnMigrationButtonClicked(object sender, EventArgs e)
-        {
-            bool answer = await DisplayAlert("Daten migrieren",
-                "Möchten Sie vorhandene Daten auf die neue Ordnerstruktur migrieren?\n\n" +
-                "Dies kopiert:\n" +
-                "• Kundendaten (Customer.csv)\n" +
-                "• Tools-Konfiguration (tools_config.json)\n\n" +
-                "Existierende Daten werden nicht überschrieben.",
-                "Ja, migrieren", "Abbrechen");
-
-            if (!answer) return;
-
-            try
-            {
-                int migratedFiles = await MigrateOldDataIfNeeded();
-
-                if (migratedFiles > 0)
-                {
-                    await DisplayAlert("Migration erfolgreich",
-                        $"{migratedFiles} Dateien wurden migriert.\n\n" +
-                        "Die App wird jetzt neu gestartet, um die migrierten Daten zu laden.", "OK");
-
-                    // App neu starten bzw. Daten neu laden
-                    LoadStatistics();
-                    LoadToolsConfiguration();
-
-                    // Optional: MainPage neu laden
-                    // await Navigation.PopAsync();
-                    // await Navigation.PushAsync(new MainPage());
-                }
-                else
-                {
-                    await DisplayAlert("Migration",
-                        "Keine Migration notwendig - Daten sind bereits in der neuen Struktur vorhanden.", "OK");
-                }
-            }
-            catch (Exception ex)
-            {
-                await DisplayAlert("Fehler", $"Migration fehlgeschlagen: {ex.Message}", "OK");
-            }
-        }
-
-        // Migrations-Methode (gibt Anzahl migrierter Dateien zurück)
-        private async Task<int> MigrateOldDataIfNeeded()
-        {
-            int migratedCount = 0;
-
-            try
-            {
-                string oldDataPath = Path.Combine(FileSystem.AppDataDirectory, "Customer.csv");
-                string oldConfigPath = Path.Combine(FileSystem.AppDataDirectory, "tools_config.json");
-
-                // Migriere Kundendaten, falls vorhanden
-                if (File.Exists(oldDataPath) && !File.Exists(_dataFilePath))
-                {
-                    Directory.CreateDirectory(Path.GetDirectoryName(_dataFilePath));
-                    File.Copy(oldDataPath, _dataFilePath);
-                    migratedCount++;
-                    Console.WriteLine("Kundendaten migriert von: " + oldDataPath);
-                }
-
-                // Migriere Tools-Konfiguration, falls vorhanden
-                if (File.Exists(oldConfigPath) && !File.Exists(_toolsConfigPath))
-                {
-                    Directory.CreateDirectory(Path.GetDirectoryName(_toolsConfigPath));
-                    File.Copy(oldConfigPath, _toolsConfigPath);
-                    migratedCount++;
-                    Console.WriteLine("Tools-Konfiguration migriert von: " + oldConfigPath);
-                }
-
-                return migratedCount;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine("Migration fehlgeschlagen: " + ex.Message);
-                throw; // Wir werfen die Exception weiter, damit der Button-Handler sie abfangen kann
-            }
-        }
-
-        // In der SettingsPage - prüfe beim Laden, ob alte Daten existieren
-        protected override void OnAppearing()
-        {
-            base.OnAppearing();
-            CheckForOldData();
-        }
-
-        private async void CheckForOldData()
+        private void CheckForOldData()
         {
             string oldDataPath = Path.Combine(FileSystem.AppDataDirectory, "Customer.csv");
             string oldConfigPath = Path.Combine(FileSystem.AppDataDirectory, "tools_config.json");
 
             if (File.Exists(oldDataPath) || File.Exists(oldConfigPath))
             {
-                // Alte Daten gefunden - zeige Hinweis an
-                await DisplayAlert("Alte Daten gefunden",
-                    "Es wurden Daten in der alten Ordnerstruktur gefunden.\n\n" +
-                    "Sie können diese über 'Daten migrieren' in die neue Struktur übertragen.", "OK");
+                // Kein Popup mehr automatisch - der Benutzer kann selbst entscheiden
+                Debug.WriteLine("Alte Daten für Migration gefunden");
             }
         }
+        #endregion
     }
 }

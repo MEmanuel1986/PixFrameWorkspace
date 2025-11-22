@@ -32,19 +32,30 @@ namespace PixFrameWorkspace
                         var line = lines[i];
                         var parts = line.Split(',');
 
-                        if (parts.Length >= 9)
+                        // Angepasst für neue Struktur (18 Felder)
+                        if (parts.Length >= 11)
                         {
                             var project = new Project
                             {
                                 ProjectId = int.Parse(parts[0]),
                                 CustomerNumber = int.Parse(parts[1]),
                                 ProjectName = UnescapeCsvField(parts[2]),
-                                Description = UnescapeCsvField(parts[3]),
+                                Category = UnescapeCsvField(parts[3]),
                                 CreatedDate = DateTime.Parse(parts[4]),
-                                Deadline = string.IsNullOrEmpty(parts[5]) ? null : DateTime.Parse(parts[5]),
+                                Booking = string.IsNullOrEmpty(parts[5]) ? null : DateTime.Parse(parts[5]),
                                 Status = UnescapeCsvField(parts[6]),
                                 ProjectFolderPath = UnescapeCsvField(parts[7]),
-                                Notes = UnescapeCsvField(parts[8])
+                                Notes = UnescapeCsvField(parts[8]),
+                                Location = UnescapeCsvField(parts[9]),
+                                BookingTime = TimeSpan.Parse(parts[10]),
+                                // NEUE FELDER
+                                Fotografie = parts.Length > 11 ? bool.Parse(parts[11]) : false,
+                                Videografie = parts.Length > 12 ? bool.Parse(parts[12]) : false,
+                                Glueckwunschkarten = parts.Length > 13 ? bool.Parse(parts[13]) : false,
+                                GettingReady = parts.Length > 14 ? bool.Parse(parts[14]) : false,
+                                GettingReadyEr = parts.Length > 15 ? bool.Parse(parts[15]) : false,
+                                GettingReadySie = parts.Length > 16 ? bool.Parse(parts[16]) : false,
+                                GettingReadyBeide = parts.Length > 17 ? bool.Parse(parts[17]) : false
                             };
                             _projects.Add(project);
                         }
@@ -63,7 +74,8 @@ namespace PixFrameWorkspace
             {
                 var lines = new List<string>
                 {
-                    "ProjectId,CustomerNumber,ProjectName,Description,CreatedDate,Deadline,Status,ProjectFolderPath,Notes"
+                    // NEUE CSV-STRUKTUR mit 18 Spalten
+                    "ProjectId,CustomerNumber,ProjectName,Category,CreatedDate,Booking,Status,ProjectFolderPath,Notes,Location,BookingTime,Fotografie,Videografie,Glueckwunschkarten,GettingReady,GettingReadyEr,GettingReadySie,GettingReadyBeide"
                 };
 
                 foreach (var project in _projects)
@@ -71,12 +83,21 @@ namespace PixFrameWorkspace
                     var line = $"{project.ProjectId}," +
                               $"{project.CustomerNumber}," +
                               $"{EscapeCsvField(project.ProjectName)}," +
-                              $"{EscapeCsvField(project.Description)}," +
+                              $"{EscapeCsvField(project.Category)}," +
                               $"{project.CreatedDate:yyyy-MM-dd HH:mm:ss}," +
-                              $"{(project.Deadline.HasValue ? project.Deadline.Value.ToString("yyyy-MM-dd HH:mm:ss") : "")}," +
+                              $"{(project.Booking.HasValue ? project.Booking.Value.ToString("yyyy-MM-dd HH:mm:ss") : "")}," +
                               $"{EscapeCsvField(project.Status)}," +
                               $"{EscapeCsvField(project.ProjectFolderPath)}," +
-                              $"{EscapeCsvField(project.Notes)}";
+                              $"{EscapeCsvField(project.Notes)}," +
+                              $"{EscapeCsvField(project.Location)}," +
+                              $"{project.BookingTime}," +
+                              $"{project.Fotografie}," +
+                              $"{project.Videografie}," +
+                              $"{project.Glueckwunschkarten}," +
+                              $"{project.GettingReady}," +
+                              $"{project.GettingReadyEr}," +
+                              $"{project.GettingReadySie}," +
+                              $"{project.GettingReadyBeide}";
                     lines.Add(line);
                 }
 
@@ -127,6 +148,7 @@ namespace PixFrameWorkspace
             }
         }
 
+        // FEHLENDE METHODEN HINZUGEFÜGT:
         private static string EscapeCsvField(string field)
         {
             if (string.IsNullOrEmpty(field)) return "";
@@ -149,8 +171,6 @@ namespace PixFrameWorkspace
             return field;
         }
 
-        // IN PROJECTREPOSITORY.CS - AM ENDE DER KLasse EINFÜGEN:
-
         public static string CreateProjectFolder(Customer customer, Project project)
         {
             string projectFolderName = $"P_{project.ProjectId}_{project.ProjectName.Replace(" ", "_")}";
@@ -167,13 +187,13 @@ namespace PixFrameWorkspace
             // Projekt-spezifische Unterordner erstellen
             var projectSubfolders = new[]
             {
-        "Contracts",
-        "Invoices",
-        "Images",
-        "Videos",
-        "Documents",
-        "Assets"
-    };
+                "Contracts",
+                "Invoices",
+                "Images",
+                "Videos",
+                "Documents",
+                "Assets"
+            };
 
             foreach (var folder in projectSubfolders)
             {
@@ -182,6 +202,5 @@ namespace PixFrameWorkspace
 
             return projectFolderPath;
         }
-
     }
 }

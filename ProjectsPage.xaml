@@ -2,92 +2,481 @@
 <ContentPage x:Class="PixFrameWorkspace.ProjectsPage"
              xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-             Title="Projekte">
+             Title="Projektverwaltung">
 
-    <Grid RowDefinitions="Auto,*,Auto">
+    <Grid ColumnDefinitions="400,*,200" ColumnSpacing="10" RowDefinitions="*,Auto">
 
-        <!-- Header -->
-        <Grid Grid.Row="0" Padding="15" BackgroundColor="#F5F5F5">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
+        <!-- LINKE SPALTE: Suchleiste und Projektliste -->
+        <Grid Grid.Column="0" Grid.Row="0" RowDefinitions="Auto,Auto,*,Auto" RowSpacing="10" Padding="10">
 
-            <Button Grid.Column="0" 
-                    Text="? Zur�ck" 
-                    Clicked="OnBackButtonClicked"
-                    BackgroundColor="Transparent"
-                    TextColor="#3498DB" />
+            <!-- Suchleiste -->
+            <VerticalStackLayout Grid.Row="0" Spacing="5">
+                <Label Text="Projekte suchen:" FontSize="16" FontAttributes="Bold" />
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="5">
+                    <Entry x:Name="SearchEntry" 
+                           Placeholder="Projektname, Status..." 
+                           TextChanged="OnSearchTextChanged"
+                           Grid.Column="0" />
+                    <Button Text="X" 
+                            Clicked="OnClearSearchClicked"
+                            Grid.Column="1"
+                            WidthRequest="40"
+                            BackgroundColor="LightGray" />
+                </Grid>
+            </VerticalStackLayout>
 
-            <Label Grid.Column="1" 
-                   Text="Projekte" 
-                   FontSize="20" 
-                   FontAttributes="Bold" 
-                   HorizontalOptions="Center" />
+            <!-- Projektanzahl -->
+            <Label x:Name="ProjectCountLabel" 
+                   Grid.Row="1"
+                   Text="0 Projekte gefunden" 
+                   FontSize="12" 
+                   TextColor="Gray" />
 
-            <Button Grid.Column="2" 
-                    Text="Neues Projekt" 
-                    Clicked="OnNewProjectClicked"
-                    BackgroundColor="#27AE60"
-                    TextColor="White" />
+            <!-- Projektliste -->
+            <VerticalStackLayout Grid.Row="2" Spacing="5">
+                <Label Text="Projektliste:" FontSize="16" FontAttributes="Bold" />
+
+                <ListView x:Name="ProjectsListView"
+                          SelectionMode="Single"
+                          ItemSelected="OnProjectSelected"
+                          HasUnevenRows="True"
+                          BackgroundColor="White"
+                          VerticalOptions="FillAndExpand"
+                          Margin="0,5,0,0">
+                    <ListView.ItemTemplate>
+                        <DataTemplate>
+                            <ViewCell>
+                                <Grid Padding="10" ColumnDefinitions="*" ColumnSpacing="10" BackgroundColor="White">
+                                    <VerticalStackLayout>
+                                        <Label Text="{Binding ProjectName}" 
+                                               FontSize="14" 
+                                               LineBreakMode="TailTruncation" />
+                                        <Label Text="{Binding BookingInfo}" 
+                                               FontSize="12" 
+                                               TextColor="Gray"
+                                               LineBreakMode="TailTruncation" />
+                                        <Label Text="{Binding Category}" 
+                                               FontSize="12" 
+                                               TextColor="Gray"
+                                               LineBreakMode="TailTruncation" />
+                                        <Label Text="{Binding Status}" 
+                                               FontSize="12" 
+                                               TextColor="Gray"
+                                               LineBreakMode="TailTruncation" />
+                                    </VerticalStackLayout>
+                                </Grid>
+                            </ViewCell>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+            </VerticalStackLayout>
+
+            <!-- Statusinformation unten -->
+            <Label Grid.Row="3"
+                   Text="Tipp: Klicken Sie auf ein Projekt zum Bearbeiten"
+                   FontSize="12"
+                   TextColor="Gray"
+                   HorizontalOptions="Center"
+                   Margin="0,10,0,0" />
+
         </Grid>
 
-        <!-- Projekte Liste -->
-        <CollectionView x:Name="ProjectsCollectionView"
-                       Grid.Row="1"
-                       SelectionMode="Single"
-                       SelectionChanged="OnProjectSelected">
-            <CollectionView.ItemTemplate>
-                <DataTemplate>
-                    <Grid Padding="15" ColumnDefinitions="Auto,*,Auto">
+        <!-- MITTLERE SPALTE: Projekt-Eingabeformular -->
+        <ScrollView Grid.Column="1" Grid.Row="0">
+            <VerticalStackLayout Spacing="12" Padding="15" VerticalOptions="Start">
 
-                        <Frame Grid.Column="0" 
-                               BackgroundColor="#3498DB" 
-                               Padding="10"
-                               HeightRequest="40"
-                               WidthRequest="40"
-                               CornerRadius="20"
-                               HorizontalOptions="Center"
-                               VerticalOptions="Center">
-                            <Label Text="??" 
-                                   FontSize="16"
-                                   HorizontalOptions="Center"
-                                   VerticalOptions="Center" />
-                        </Frame>
+                <!-- Projekt-ID (ausgeblendet) -->
+                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10" VerticalOptions="Center" IsVisible="False">
+                    <Label Text=""
+                           FontSize="14"
+                           FontAttributes="Bold"
+                           VerticalOptions="Center"
+                           Grid.Column="0" />
+                    <Label x:Name="ProjectIdLabel"
+                           Text=""
+                           FontSize="14"
+                           FontAttributes="Bold"
+                           TextColor="White"
+                           VerticalOptions="Center"
+                           Grid.Column="1" />
+                </Grid>
 
-                        <VerticalStackLayout Grid.Column="1" Padding="10,0">
-                            <Label Text="{Binding ProjectName}" 
-                                   FontSize="16" 
-                                   FontAttributes="Bold" />
-                            <Label Text="{Binding Description}" 
-                                   FontSize="12" 
-                                   TextColor="Gray"
-                                   LineBreakMode="TailTruncation" />
-                            <Label Text="{Binding Status}" 
-                                   FontSize="11" 
-                                   TextColor="{Binding Status, Converter={x:StaticResource StatusColorConverter}}" />
+                <!-- Projektdaten -->
+                <Frame BackgroundColor="#F8F9FA" Padding="12" HasShadow="False">
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="15">
+                        <!-- LINKE SEITE: Projektname und Kategorie -->
+                        <VerticalStackLayout Grid.Column="0" Spacing="8">
+                            <Label Text="Projektdaten" FontSize="12" FontAttributes="Bold" />
+
+                            <!-- Automatisch generierter Projektname -->
+                            <VerticalStackLayout Spacing="4">
+                                <Label Text="Projektname (automatisch)" FontSize="12" />
+                                <Label x:Name="GeneratedProjectNameLabel"
+                                       Text=""
+                                       FontSize="14"
+                                       FontAttributes="Bold"
+                                       TextColor="DarkBlue"
+                                       BackgroundColor="#F0F0F0"
+                                       Padding="10"
+                                       HeightRequest="40" />
+                            </VerticalStackLayout>
+
+                            <!-- Kategorie Dropdown -->
+                            <VerticalStackLayout Spacing="4">
+                                <Label Text="Kategorie *" FontSize="12" />
+                                <Picker x:Name="CategoryPicker"
+                                        Title="Kategorie auswählen..."
+                                        FontSize="12"
+                                        MinimumHeightRequest="60"
+                                        HeightRequest="60"
+                                        SelectedIndexChanged="OnCategoryPickerChanged">
+                                    <Picker.Items>
+                                        <x:String>Hochzeit</x:String>
+                                        <x:String>Boudoir</x:String>
+                                        <x:String>Afterwedding</x:String>
+                                        <x:String>Familie</x:String>
+                                        <x:String>Babybauch</x:String>
+                                        <x:String>Business</x:String>
+                                        <x:String>Portrait</x:String>
+                                        <x:String>Passbilder</x:String>
+                                        <x:String>Mode/Modell</x:String>
+                                    </Picker.Items>
+                                </Picker>
+                            </VerticalStackLayout>
                         </VerticalStackLayout>
 
-                        <Label Grid.Column="2" 
-                               Text="?" 
-                               FontSize="16"
-                               TextColor="Gray"
-                               VerticalOptions="Center" />
+                        <!-- RECHTE SEITE: Dienstleistungen -->
+                        <VerticalStackLayout Grid.Column="1" Spacing="8">
+                            <Label Text="Dienstleistungen" FontSize="12" FontAttributes="Bold" />
 
+                            <!-- Dienstleistungen Checkboxen -->
+                            <VerticalStackLayout Spacing="15">
+                                <!-- Erste Reihe: Fotografie und Videografie -->
+                                <Grid ColumnDefinitions="*,*" ColumnSpacing="15">
+                                    <!-- Fotografie -->
+                                    <HorizontalStackLayout Grid.Column="0" Spacing="10">
+                                        <CheckBox x:Name="FotografieCheckBox" 
+                                                  VerticalOptions="Center"/>
+                                        <Label Text="Fotografie" 
+                                               FontSize="12"
+                                               VerticalOptions="Center"/>
+                                    </HorizontalStackLayout>
+
+                                    <!-- Videografie -->
+                                    <HorizontalStackLayout Grid.Column="1" Spacing="10">
+                                        <CheckBox x:Name="VideografieCheckBox" 
+                                                  VerticalOptions="Center"/>
+                                        <Label Text="Videografie" 
+                                               FontSize="12"
+                                               VerticalOptions="Center"/>
+                                    </HorizontalStackLayout>
+                                </Grid>
+
+                                <!-- Zweite Reihe: Danksagungskarten und Getting Ready -->
+                                <Grid ColumnDefinitions="*,*" ColumnSpacing="15">
+                                    <!-- Danksagungskarten -->
+                                    <VerticalStackLayout Grid.Column="0" Spacing="5">
+                                        <HorizontalStackLayout Spacing="10">
+                                            <CheckBox x:Name="GlueckwunschkartenCheckBox" 
+                                                      VerticalOptions="Center"/>
+                                            <Label Text="Danksagungskarten" 
+                                                   FontSize="12"
+                                                   VerticalOptions="Center"/>
+                                        </HorizontalStackLayout>
+                                    </VerticalStackLayout>
+
+                                    <!-- Getting Ready -->
+                                    <VerticalStackLayout Grid.Column="1" Spacing="5">
+                                        <HorizontalStackLayout Spacing="10">
+                                            <CheckBox x:Name="GettingReadyCheckBox" 
+                                                      VerticalOptions="Center"
+                                                      CheckedChanged="OnGettingReadyCheckedChanged"/>
+                                            <Label Text="Getting Ready" 
+                                                   FontSize="12"
+                                                   VerticalOptions="Center"/>
+                                        </HorizontalStackLayout>
+                                    </VerticalStackLayout>
+                                </Grid>
+
+                                <!-- Getting Ready Optionen (immer sichtbar) -->
+                                <VerticalStackLayout Spacing="8" Margin="0,5,0,0">
+                                    <Label Text="Getting Ready für:" FontSize="11" FontAttributes="Bold" TextColor="Gray" />
+                                    <HorizontalStackLayout Spacing="15">
+                                        <HorizontalStackLayout Spacing="5">
+                                            <CheckBox x:Name="GettingReadyErCheckBox" 
+                                                      VerticalOptions="Center"
+                                                      IsEnabled="False"/>
+                                            <Label Text="Er" 
+                                                   FontSize="11"
+                                                   VerticalOptions="Center"/>
+                                        </HorizontalStackLayout>
+
+                                        <HorizontalStackLayout Spacing="5">
+                                            <CheckBox x:Name="GettingReadySieCheckBox" 
+                                                      VerticalOptions="Center"
+                                                      IsEnabled="False"/>
+                                            <Label Text="Sie" 
+                                                   FontSize="11"
+                                                   VerticalOptions="Center"/>
+                                        </HorizontalStackLayout>
+
+                                        <HorizontalStackLayout Spacing="5">
+                                            <CheckBox x:Name="GettingReadyBeideCheckBox" 
+                                                      VerticalOptions="Center"
+                                                      CheckedChanged="OnGettingReadyBeideCheckedChanged"
+                                                      IsEnabled="False"/>
+                                            <Label Text="Beide" 
+                                                   FontSize="11"
+                                                   VerticalOptions="Center"/>
+                                        </HorizontalStackLayout>
+                                    </HorizontalStackLayout>
+                                </VerticalStackLayout>
+                            </VerticalStackLayout>
+                        </VerticalStackLayout>
                     </Grid>
-                </DataTemplate>
-            </CollectionView.ItemTemplate>
-        </CollectionView>
+                </Frame>
 
-        <!-- Status -->
-        <Label x:Name="StatusLabel"
-               Grid.Row="2"
-               Text="Keine Projekte vorhanden"
-               FontSize="14"
-               HorizontalOptions="Center"
-               Padding="10" />
+                <!-- Status & Buchungsdaten -->
+                <Frame BackgroundColor="#F8F9FA" Padding="12" HasShadow="False">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="Status &amp; Buchungsdaten" FontSize="12" FontAttributes="Bold" />
+
+                        <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                            <VerticalStackLayout Grid.Column="0" Spacing="4">
+                                <Label Text="Status" FontSize="12" />
+                                <Picker x:Name="StatusPicker"
+                                        FontSize="12"
+                                        MinimumHeightRequest="60"
+                                        HeightRequest="60">
+                                    <Picker.Items>
+                                        <x:String>Aktiv</x:String>
+                                        <x:String>Abgeschlossen</x:String>
+                                        <x:String>Pausiert</x:String>
+                                    </Picker.Items>
+                                </Picker>
+                            </VerticalStackLayout>
+
+                            <VerticalStackLayout Grid.Column="1" Spacing="4">
+                                <Label Text="Buchungsdatum" FontSize="12" />
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="5">
+                                    <Entry x:Name="BookingDateEntry" 
+                                           Placeholder="dd.MM.yyyy"
+                                           FontSize="12"
+                                           HeightRequest="36"
+                                           TextChanged="OnBookingDateEntryChanged"
+                                           Grid.Column="0" />
+                                    <Button x:Name="BookingDatePickerButton"
+                                            Text="Kalender"
+                                            Clicked="OnBookingDatePickerClicked"
+                                            BackgroundColor="LightGray"
+                                            TextColor="Black"
+                                            WidthRequest="80"
+                                            FontSize="11"
+                                            Grid.Column="1" />
+                                </Grid>
+                            </VerticalStackLayout>
+                        </Grid>
+
+                        <!-- Ort und Uhrzeit -->
+                        <Grid ColumnDefinitions="*,*" ColumnSpacing="8" Margin="0,8,0,0">
+                            <VerticalStackLayout Grid.Column="0" Spacing="4">
+                                <Label Text="Ort/Location" FontSize="12" />
+                                <Entry x:Name="LocationEntry" 
+                                       Placeholder="Ort eingeben..."
+                                       FontSize="12"
+                                       HeightRequest="36" />
+                            </VerticalStackLayout>
+
+                            <VerticalStackLayout Grid.Column="1" Spacing="4">
+                                <Label Text="Uhrzeit" FontSize="12" />
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="5">
+                                    <Entry x:Name="BookingTimeEntry" 
+                                           Placeholder="HH:mm"
+                                           FontSize="12"
+                                           HeightRequest="36"
+                                           Grid.Column="0" />
+                                    <Button x:Name="BookingTimePickerButton"
+                                            Text="Zeit"
+                                            Clicked="OnBookingTimePickerClicked"
+                                            BackgroundColor="LightGray"
+                                            TextColor="Black"
+                                            WidthRequest="60"
+                                            FontSize="11"
+                                            Grid.Column="1" />
+                                </Grid>
+                            </VerticalStackLayout>
+                        </Grid>
+                    </VerticalStackLayout>
+                </Frame>
+
+                <!-- Notizen -->
+                <Frame BackgroundColor="#F8F9FA" Padding="12" HasShadow="False">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="Projektnotizen" FontSize="12" FontAttributes="Bold" />
+                        <Editor x:Name="NotesEditor" 
+                               HeightRequest="100" 
+                               Placeholder="Notizen zum Projekt..."
+                               FontSize="12" />
+                    </VerticalStackLayout>
+                </Frame>
+
+            </VerticalStackLayout>
+        </ScrollView>
+
+        <!-- RECHTE SPALTE: Buttons -->
+        <VerticalStackLayout Grid.Column="2" Grid.Row="0" Spacing="15" Padding="15,20">
+
+            <!-- Projekt-Aktionen -->
+            <Frame BackgroundColor="#FFFFFF" Padding="12" HasShadow="False">
+                <VerticalStackLayout Spacing="10">
+                    <Label Text="Projekt-Aktionen" 
+                           FontSize="14" 
+                           FontAttributes="Bold" 
+                           HorizontalOptions="Center" />
+
+                    <Button x:Name="SaveButton" 
+                            Text="Speichern" 
+                            Clicked="OnSaveButtonClicked"
+                            BackgroundColor="#607D8B"
+                            TextColor="White"
+                            HeightRequest="40"
+                            FontSize="13"
+                            CornerRadius="5" />
+
+                    <Button x:Name="ClearButton" 
+                            Text="Neues Projekt" 
+                            Clicked="OnClearButtonClicked"
+                            BackgroundColor="#607D8B"
+                            TextColor="White"
+                            HeightRequest="40"
+                            FontSize="13"
+                            CornerRadius="5" />
+
+                    <Button x:Name="OpenFolderButton" 
+                            Text="Projektordner" 
+                            Clicked="OnOpenProjectFolderClicked"
+                            BackgroundColor="#607D8B"
+                            TextColor="White"
+                            HeightRequest="40"
+                            FontSize="13"
+                            CornerRadius="5"
+                            IsEnabled="False" />
+
+                    <Button x:Name="BackButton" 
+                            Text="Zurück zu Kunden" 
+                            Clicked="OnBackButtonClicked"
+                            BackgroundColor="#607D8B"
+                            TextColor="White"
+                            HeightRequest="40"
+                            FontSize="13"
+                            CornerRadius="5" />
+                </VerticalStackLayout>
+            </Frame>
+
+            <!-- Medien (Bilder & Videos) -->
+            <Frame BackgroundColor="#FFFFFF" Padding="12" HasShadow="False">
+                <VerticalStackLayout Spacing="10">
+                    <Label Text="Medien" 
+                           FontSize="14" 
+                           FontAttributes="Bold" 
+                           HorizontalOptions="Center" />
+
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                        <Button Text="Bilder" 
+                                Clicked="OnAddImageClicked"
+                                BackgroundColor="#607D8B"
+                                TextColor="White"
+                                Grid.Column="0"
+                                HeightRequest="36"
+                                FontSize="12" />
+
+                        <Button Text="Videos" 
+                                Clicked="OnAddVideoClicked"
+                                BackgroundColor="#607D8B"
+                                TextColor="White"
+                                Grid.Column="1"
+                                HeightRequest="36"
+                                FontSize="12" />
+                    </Grid>
+                </VerticalStackLayout>
+            </Frame>
+
+            <!-- Tools Quick Actions -->
+            <Frame BackgroundColor="#FFFFFF" Padding="12" HasShadow="False">
+                <VerticalStackLayout Spacing="10">
+                    <Label Text="Tools" 
+               FontSize="14" 
+               FontAttributes="Bold" 
+               HorizontalOptions="Center" />
+
+                    <!-- Tool Auswahl Dropdown -->
+                    <VerticalStackLayout Spacing="5">
+                        <Label Text="Tool auswählen:" FontSize="12" />
+                        <Picker x:Name="ToolsPicker"
+                    Title=""
+                    FontSize="12"
+                    HeightRequest="40"
+                    ItemDisplayBinding="{Binding Name}" />
+                    </VerticalStackLayout>
+
+                    <!-- Start Button -->
+                    <Button x:Name="StartToolButton" 
+                Text="Tool starten" 
+                Clicked="OnStartToolButtonClicked"
+                BackgroundColor="#607D8B"
+                TextColor="White"
+                HeightRequest="36"
+                FontSize="12"
+                IsEnabled="False" />
+
+                    <!-- Info Text -->
+                    <Label Text="Tools werden in den Einstellungen konfiguriert"
+               FontSize="10"
+               TextColor="Gray"
+               HorizontalOptions="Center" />
+
+                </VerticalStackLayout>
+            </Frame>
+
+            <!-- Dokumente (Verträge & Rechnungen) -->
+            <Frame BackgroundColor="#FFFFFF" Padding="12" HasShadow="False">
+                <VerticalStackLayout Spacing="10">
+                    <Label Text="Dokumente" 
+                           FontSize="14" 
+                           FontAttributes="Bold" 
+                           HorizontalOptions="Center" />
+
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                        <Button Text="Verträge" 
+                                Clicked="OnAddContractClicked"
+                                BackgroundColor="#607D8B"
+                                TextColor="White"
+                                Grid.Column="0"
+                                HeightRequest="36"
+                                FontSize="12" />
+
+                        <Button Text="Rechnungen" 
+                                Clicked="OnAddInvoiceClicked"
+                                BackgroundColor="#607D8B"
+                                TextColor="White"
+                                Grid.Column="1"
+                                HeightRequest="36"
+                                FontSize="12" />
+                    </Grid>
+                </VerticalStackLayout>
+            </Frame>
+
+        </VerticalStackLayout>
+
+        <!-- UNTERE LEISTE: Status -->
+        <Grid Grid.Column="0" Grid.ColumnSpan="3" Grid.Row="1" 
+              Padding="20,10" BackgroundColor="#F5F5F5">
+            <Label x:Name="StatusLabel"
+                   Text="Bitte Projekt auswählen oder neu erstellen"
+                   FontSize="14"
+                   VerticalOptions="Center"
+                   HorizontalOptions="Center" />
+        </Grid>
 
     </Grid>
-
 </ContentPage>
