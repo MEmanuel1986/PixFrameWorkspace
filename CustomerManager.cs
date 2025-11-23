@@ -141,7 +141,9 @@ namespace PixFrameWorkspace
 
                     foreach (var c in customers.OrderBy(cu => cu.CustomerNumber))
                     {
-                        await csv.WriteRecordAsync(c).ConfigureAwait(false);
+                        // WriteRecordAsync ist nicht in allen CsvHelper-Versionen vorhanden.
+                        // Verwende WriteRecord + NextRecordAsync für Kompatibilität.
+                        csv.WriteRecord(c);
                         await csv.NextRecordAsync().ConfigureAwait(false);
                     }
 

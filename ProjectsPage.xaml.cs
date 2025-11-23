@@ -788,7 +788,8 @@ namespace PixFrameWorkspace
             try
             {
                 var customerManager = new CustomerManager();
-                var success = customerManager.OpenCustomerFolder(_currentCustomer);
+                // zuvor: var success = customerManager.OpenCustomerFolder(_currentCustomer);
+                var success = await customerManager.OpenCustomerFolderAsync(_currentCustomer).ConfigureAwait(false);
 
                 if (success)
                 {
