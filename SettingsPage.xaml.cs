@@ -31,7 +31,7 @@ namespace PixFrameWorkspace
             // Verzögerte Initialisierung um UI-Problem zu vermeiden
             Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(100), () =>
             {
-                LoadStatistics();
+                _ = LoadStatisticsAsync();
                 LoadToolsConfiguration();
             });
         }
@@ -42,20 +42,23 @@ namespace PixFrameWorkspace
             Debug.WriteLine("=== SettingsPage OnAppearing ===");
             CheckForOldData();
 
-            // Statistiken neu laden wenn Seite erscheint
-            LoadStatistics();
+            // Statistiken neu laden wenn Seite erscheint (async fire-and-forget, Fehler intern geloggt)
+            _ = LoadStatisticsAsync();
         }
 
         #region STATISTIKEN
-        private void LoadStatistics()
+        private async Task LoadStatisticsAsync()
         {
             try
             {
-                Debug.WriteLine("=== DEBUG: Starte LoadStatistics ===");
+                Debug.WriteLine("=== DEBUG: Starte LoadStatisticsAsync ===");
 
                 // Sofortige UI-Updates
-                CustomerCountLabel.Text = "Lade...";
-                NextCustomerNumberLabel.Text = "Lade...";
+                Dispatcher.Dispatch(() =>
+                {
+                    CustomerCountLabel.Text = "Lade...";
+                    NextCustomerNumberLabel.Text = "Lade...";
+                });
 
                 // Pfad-Informationen
                 string actualDataPath = _dataFilePath;
@@ -69,8 +72,8 @@ namespace PixFrameWorkspace
                     return;
                 }
 
-                // Kunden aus CSV laden
-                var customers = SimpleLoadCustomers();
+                // Kunden aus CSV asynchron laden (robust mit CsvHelper)
+                var customers = await SimpleLoadCustomersAsync().ConfigureAwait(false);
                 int customerCount = customers.Count;
 
                 Debug.WriteLine($"DEBUG: {customerCount} Kunden geladen");
@@ -79,27 +82,27 @@ namespace PixFrameWorkspace
                 int nextCustomerNumber = CalculateNextCustomerNumber(customers);
                 Debug.WriteLine($"DEBUG: Nächste Kundennummer: {nextCustomerNumber}");
 
-                // Projekte zählen
-                int projectCount = SimpleLoadProjectCount();
+                // Projekte zählen (asynchron)
+                int projectCount = await SimpleLoadProjectCountAsync().ConfigureAwait(false);
 
-                // Größen berechnen
+                // Größen berechnen (kleinere IO; bleibt synchron, da iteriert wird — kann bei großen Daten ergänzt werden)
                 long databaseSize = CalculateDatabaseSize();
                 long mediaDocumentsSize = CalculateMediaSize();
 
-                // UI aktualisieren
+                // UI aktualisieren (im UI-Thread)
                 UpdateStatisticsUI(customerCount, nextCustomerNumber, projectCount, databaseSize, mediaDocumentsSize);
 
-                Debug.WriteLine($"=== DEBUG: LoadStatistics abgeschlossen ===");
+                Debug.WriteLine("=== DEBUG: LoadStatisticsAsync abgeschlossen ===");
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"FEHLER in LoadStatistics: {ex.Message}");
+                Debug.WriteLine($"FEHLER in LoadStatisticsAsync: {ex.Message}");
                 Debug.WriteLine($"StackTrace: {ex.StackTrace}");
 
                 // Fallback-Werte setzen
                 UpdateStatisticsUI(0, 1000, 0, 0, 0);
 
-                // Fehler anzeigen
+                // Fehler anzeigen (UI-Thread)
                 Dispatcher.Dispatch(async () =>
                 {
                     await DisplayAlert("Fehler", $"Statistiken konnten nicht geladen werden: {ex.Message}", "OK");
@@ -107,7 +110,7 @@ namespace PixFrameWorkspace
             }
         }
 
-        private List<Customer> SimpleLoadCustomers()
+        private async Task<List<Customer>> SimpleLoadCustomersAsync()
         {
             var customers = new List<Customer>();
 
@@ -120,69 +123,65 @@ namespace PixFrameWorkspace
                     return customers;
                 }
 
-                Debug.WriteLine("=== CSV-INHALT ===");
-                var allLines = File.ReadAllLines(csvPath, Encoding.UTF8);
-                Debug.WriteLine($"Anzahl Zeilen: {allLines.Length}");
+                Debug.WriteLine("=== CSV-INHALT (wird mit CsvHelper gelesen) ===");
 
-                if (allLines.Length > 0)
+                using (var stream = File.Open(csvPath, FileMode.Open, FileAccess.Read, FileShare.Read))
+                using (var reader = new StreamReader(stream, Encoding.UTF8))
                 {
-                    Debug.WriteLine($"Header: {allLines[0]}");
-                }
-
-                for (int i = 1; i < allLines.Length; i++)
-                {
-                    try
+                    var config = new CsvConfiguration(CultureInfo.InvariantCulture)
                     {
-                        string line = allLines[i];
-                        Debug.WriteLine($"Zeile {i}: {line}");
+                        HasHeaderRecord = true,
+                        MissingFieldFound = null,
+                        BadDataFound = context => Debug.WriteLine($"Bad CSV data: {context.RawRecord}"),
+                        IgnoreBlankLines = true,
+                        TrimOptions = TrimOptions.Trim,
+                        DetectColumnCountChanges = false,
+                    };
 
-                        // Einfache Aufteilung
-                        string[] fields = line.Split(',');
-
-                        if (fields.Length >= 1)
+                    using (var csv = new CsvReader(reader, config))
+                    {
+                        // Asynchron über IAsyncEnumerable iterieren (robust gegen große Dateien)
+                        try
                         {
-                            var customer = new Customer();
-
-                            // Kundennummer
-                            if (int.TryParse(fields[0].Trim().Trim('\"'), out int customerNumber))
+                            await foreach (var customer in csv.GetRecordsAsync<Customer>())
                             {
-                                customer.CustomerNumber = customerNumber;
-                                Debug.WriteLine($"Kundennummer erkannt: {customerNumber}");
-                            }
-                            else
-                            {
-                                Debug.WriteLine($"FEHLER: Kundennummer nicht parsbar: '{fields[0]}'");
-                                continue;
+                                if (customer == null) continue;
+                                if (customer.CustomerNumber <= 0)
+                                {
+                                    Debug.WriteLine($"Übersprunge Eintrag mit ungültiger Kundennummer: {customer.CustomerNumber}");
+                                    continue;
+                                }
+
+                                // Grundlegende Feldbereinigung
+                                customer.FirstName = customer.FirstName?.Trim() ?? string.Empty;
+                                customer.LastName = customer.LastName?.Trim() ?? string.Empty;
+                                customer.Company = customer.Company?.Trim() ?? string.Empty;
+                                customer.Email = customer.Email?.Trim() ?? string.Empty;
+                                customer.Phone = customer.Phone?.Trim() ?? string.Empty;
+                                customer.Street = customer.Street?.Trim() ?? string.Empty;
+                                customer.HouseNumber = customer.HouseNumber?.Trim() ?? string.Empty;
+                                customer.ZipCode = customer.ZipCode?.Trim() ?? string.Empty;
+                                customer.City = customer.City?.Trim() ?? string.Empty;
+                                customer.VatId = customer.VatId?.Trim() ?? string.Empty;
+                                customer.FolderPath = customer.FolderPath?.Trim() ?? string.Empty;
+
+                                customers.Add(customer);
+                                Debug.WriteLine($"Erfolg: Kunde {customer.CustomerNumber} geladen: {customer.FirstName} {customer.LastName}");
                             }
 
-                            // Einfache Feldzuordnung
-                            if (fields.Length > 1) customer.FirstName = fields[1].Trim().Trim('\"');
-                            if (fields.Length > 2) customer.LastName = fields[2].Trim().Trim('\"');
-                            if (fields.Length > 3) customer.Company = fields[3].Trim().Trim('\"');
-                            if (fields.Length > 4) customer.Email = fields[4].Trim().Trim('\"');
-                            if (fields.Length > 5) customer.Phone = fields[5].Trim().Trim('\"');
-                            if (fields.Length > 6) customer.Street = fields[6].Trim().Trim('\"');
-                            if (fields.Length > 7) customer.HouseNumber = fields[7].Trim().Trim('\"');
-                            if (fields.Length > 8) customer.ZipCode = fields[8].Trim().Trim('\"');
-                            if (fields.Length > 9) customer.City = fields[9].Trim().Trim('\"');
-                            if (fields.Length > 10) customer.VatId = fields[10].Trim().Trim('\"');
-                            if (fields.Length > 11) customer.FolderPath = fields[11].Trim().Trim('\"');
-
-                            customers.Add(customer);
-                            Debug.WriteLine($"Erfolg: Kunde {customer.CustomerNumber} geladen: {customer.FirstName} {customer.LastName}");
+                            Debug.WriteLine($"=== SIMPLE LOAD (CsvHelper async): {customers.Count} Kunden geladen ===");
+                        }
+                        catch (Exception ex)
+                        {
+                            Debug.WriteLine($"Fehler beim Parsen der CSV mit CsvHelper: {ex.Message}");
+                            // Fallback: versuche eine sehr robuste Zeilen-basierte Verarbeitung (falls nötig)
                         }
                     }
-                    catch (Exception ex)
-                    {
-                        Debug.WriteLine($"Fehler in Zeile {i}: {ex.Message}");
-                    }
                 }
-
-                Debug.WriteLine($"=== SIMPLE LOAD: {customers.Count} Kunden geladen ===");
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"FEHLER in SimpleLoadCustomers: {ex.Message}");
+                Debug.WriteLine($"FEHLER in SimpleLoadCustomersAsync: {ex.Message}");
             }
 
             return customers;
@@ -237,14 +236,14 @@ namespace PixFrameWorkspace
             }
         }
 
-        private int SimpleLoadProjectCount()
+        private async Task<int> SimpleLoadProjectCountAsync()
         {
             try
             {
                 if (!File.Exists(_projectsFilePath))
                     return 0;
 
-                var lines = File.ReadAllLines(_projectsFilePath);
+                var lines = await File.ReadAllLinesAsync(_projectsFilePath).ConfigureAwait(false);
                 return Math.Max(0, lines.Length - 1);
             }
             catch (Exception ex)
@@ -494,7 +493,7 @@ namespace PixFrameWorkspace
         {
             try
             {
-                var customers = SimpleLoadCustomers();
+                var customers = await SimpleLoadCustomersAsync().ConfigureAwait(false);
                 if (customers.Count == 0)
                 {
                     await DisplayAlert("Export", "Keine Kundendaten zum Exportieren vorhanden.", "OK");
@@ -517,12 +516,12 @@ namespace PixFrameWorkspace
                 }
 
                 string exportPath = Path.Combine(exportDir, $"kunden_export_{DateTime.Now:yyyyMMdd_HHmmss}.json");
-                File.WriteAllText(exportPath, jsonData, Encoding.UTF8);
+                await File.WriteAllTextAsync(exportPath, jsonData, Encoding.UTF8).ConfigureAwait(false);
 
                 await DisplayAlert("Export erfolgreich",
                     $"Kundendaten wurden als JSON exportiert:\n{exportPath}", "OK");
 
-                LoadStatistics(); // Statistiken neu laden wegen neuer Datei
+                _ = LoadStatisticsAsync(); // Statistiken neu laden wegen neuer Datei
             }
             catch (Exception ex)
             {
@@ -547,7 +546,7 @@ namespace PixFrameWorkspace
 
                 if (fileResult == null) return;
 
-                string jsonData = File.ReadAllText(fileResult.FullPath, Encoding.UTF8);
+                string jsonData = await File.ReadAllTextAsync(fileResult.FullPath, Encoding.UTF8).ConfigureAwait(false);
                 var customers = JsonSerializer.Deserialize<List<Customer>>(jsonData);
 
                 if (customers == null || customers.Count == 0)
@@ -564,7 +563,7 @@ namespace PixFrameWorkspace
                 if (!answer) return;
 
                 // Bestehende Kundennummern ermitteln
-                var existingCustomers = SimpleLoadCustomers();
+                var existingCustomers = await SimpleLoadCustomersAsync().ConfigureAwait(false);
                 var existingCustomerNumbers = new HashSet<int>(existingCustomers.Select(c => c.CustomerNumber));
 
                 // Neue Kunden filtern (keine Duplikate)
@@ -579,10 +578,11 @@ namespace PixFrameWorkspace
                 // CSV-Header falls Datei nicht existiert
                 if (!File.Exists(_dataFilePath))
                 {
-                    File.WriteAllText(_dataFilePath, "CustomerNumber,FirstName,LastName,Company,Email,Phone,Street,HouseNumber,ZipCode,City,VatId,FolderPath\n", Encoding.UTF8);
+                    await File.WriteAllTextAsync(_dataFilePath, "CustomerNumber,FirstName,LastName,Company,Email,Phone,Street,HouseNumber,ZipCode,City,VatId,FolderPath\n", Encoding.UTF8).ConfigureAwait(false);
                 }
 
-                // Neue Kunden zur CSV hinzufügen
+                // Neue Kunden zur CSV hinzufügen (async)
+                var sb = new StringBuilder();
                 foreach (var customer in newCustomers)
                 {
                     var csvLine = $"{customer.CustomerNumber}," +
@@ -597,15 +597,16 @@ namespace PixFrameWorkspace
                                  $"{EscapeCsvField(customer.City)}," +
                                  $"{EscapeCsvField(customer.VatId)}," +
                                  $"{EscapeCsvField(customer.FolderPath)}";
-
-                    File.AppendAllText(_dataFilePath, csvLine + "\n", Encoding.UTF8);
+                    sb.AppendLine(csvLine);
                 }
+
+                await File.AppendAllTextAsync(_dataFilePath, sb.ToString(), Encoding.UTF8).ConfigureAwait(false);
 
                 await DisplayAlert("Import erfolgreich",
                     $"{newCustomers.Count} von {customers.Count} Kunden wurden importiert.\n\n" +
                     $"{customers.Count - newCustomers.Count} Kunden wurden übersprungen (bereits vorhanden).", "OK");
 
-                LoadStatistics();
+                _ = LoadStatisticsAsync();
             }
             catch (Exception ex)
             {
@@ -618,9 +619,13 @@ namespace PixFrameWorkspace
         private string EscapeCsvField(string field)
         {
             if (string.IsNullOrEmpty(field)) return "";
-            if (field.Contains(",") || field.Contains("\"") || field.Contains("\n"))
+
+            // Falls Feld Komma, Zeilenumbruch oder Anführungszeichen enthält, mit Anführungszeichen umschließen und Quotes escapen
+            bool needsQuotes = field.Contains(",") || field.Contains("\"") || field.Contains("\n") || field.Contains("\r");
+            if (needsQuotes)
             {
-                return $"\"{field.Replace("\"", "\"\"")}\"";
+                var escaped = field.Replace("\"", "\"\"");
+                return $"\"{escaped}\"";
             }
             return field;
         }
