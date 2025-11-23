@@ -14,13 +14,16 @@ namespace PixFrameWorkspace
     public partial class ProjectsPage : ContentPage
     {
         private Customer _currentCustomer;
+        private Customer _initialCustomer; // falls Konstruktor mit Customer verwendet wurde
         private List<Project> _projects = new List<Project>();
-        private List<Project> _allProjects = new List<Project>(); // Alle Projekte aus CSV
+        private List<Project> _allProjects = new List<Project>(); // Alle Projekte aus Repository
         private Project _selectedProject;
         private string _toolsConfigPath => AppConfig.GetToolsConfigPath();
         private Dictionary<string, bool> _toolsConfig;
 
-        // CSV-Pfad für Projekte
+        private ProjectRepository _projectRepo = new ProjectRepository();
+
+        // CSV-Pfad für Projekte (nicht mehr direkt genutzt)
         private string _projectsCsvPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
             "PixFrameWorkspace", "Data", "projects.csv");
 
@@ -40,23 +43,43 @@ namespace PixFrameWorkspace
         {
             InitializeComponent();
             SetupEventHandlers();
-            LoadAllProjects(); // Alle Projekte laden
-            FilterProjectsByCustomer(); // Nach Kunde filtern
+            _ = InitializeAsync();
         }
 
         // Konstruktor mit Customer-Parameter
         public ProjectsPage(Customer customer) : this()
         {
-            _currentCustomer = customer;
+            // Merke den initialen Kunden; InitializeAsync wird diesen berücksichtigen
+            _initialCustomer = customer;
+        }
 
-            if (_currentCustomer != null)
+        private async Task InitializeAsync()
+        {
+            try
             {
-                Title = $"Projekte - {_currentCustomer.DisplayName}";
-                StatusLabel.Text = $"Projekte für {_currentCustomer.DisplayName}";
-                OpenFolderButton.IsEnabled = true;
+                await _projectRepo.InitializeAsync().ConfigureAwait(false);
 
-                // Projekte nach aktuellem Kunden filtern
+                // Setze _currentCustomer falls ein initialCustomer übergeben wurde
+                if (_initialCustomer != null)
+                {
+                    _currentCustomer = _initialCustomer;
+                    // UI-Thread-Updates für Title/Status/OpenFolder
+                    Dispatcher.Dispatch(() =>
+                    {
+                        Title = $"Projekte - {_currentCustomer.DisplayName}";
+                        StatusLabel.Text = $"Projekte für {_currentCustomer.DisplayName}";
+                        OpenFolderButton.IsEnabled = true;
+                    });
+                }
+
+                _allProjects = (await _projectRepo.GetAllProjectsAsync().ConfigureAwait(false)).ToList();
+
+                // Filter und UI erst nachdem die Projekte geladen sind
                 FilterProjectsByCustomer();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Fehler bei Init ProjectsPage: {ex.Message}");
             }
         }
 
@@ -81,7 +104,7 @@ namespace PixFrameWorkspace
             UpdateProjectCount();
         }
 
-        #region CSV Operations - KORRIGIERTE FILTERUNG
+        #region CSV Operations - via ProjectRepository
         private void EnsureCsvDirectoryExists()
         {
             var directory = Path.GetDirectoryName(_projectsCsvPath);
@@ -93,35 +116,7 @@ namespace PixFrameWorkspace
 
         private void LoadAllProjects()
         {
-            try
-            {
-                _allProjects.Clear();
-
-                if (!File.Exists(_projectsCsvPath))
-                {
-                    // CSV-Datei existiert noch nicht - erstelle leere Datei mit Header
-                    EnsureCsvDirectoryExists();
-                    using (var writer = new StreamWriter(_projectsCsvPath))
-                    using (var csv = new CsvWriter(writer, CultureInfo.InvariantCulture))
-                    {
-                        csv.WriteHeader<Project>();
-                        csv.NextRecord();
-                    }
-                    return;
-                }
-
-                using (var reader = new StreamReader(_projectsCsvPath))
-                using (var csv = new CsvReader(reader, CultureInfo.InvariantCulture))
-                {
-                    _allProjects = csv.GetRecords<Project>().ToList();
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Fehler beim Laden aller Projekte aus CSV: {ex.Message}");
-                // Fallback: Beispielprojekte erstellen
-                CreateExampleProjects();
-            }
+            // Not used: loading is done via repo in InitializeAsync
         }
 
         private void FilterProjectsByCustomer()
@@ -152,40 +147,16 @@ namespace PixFrameWorkspace
             }
         }
 
-        private void SaveProjectsToCsv()
+        private async void SaveProjectsToCsv()
         {
             try
             {
-                EnsureCsvDirectoryExists();
-
-                // Bestehende Projekte aktualisieren
-                foreach (var project in _projects)
-                {
-                    var existingProject = _allProjects.FirstOrDefault(p => p.ProjectId == project.ProjectId);
-                    if (existingProject != null)
-                    {
-                        // Projekt aktualisieren
-                        var index = _allProjects.IndexOf(existingProject);
-                        _allProjects[index] = project;
-                    }
-                    else
-                    {
-                        // Neues Projekt hinzufügen
-                        _allProjects.Add(project);
-                    }
-                }
-
-                // Zurück in CSV speichern
-                using (var writer = new StreamWriter(_projectsCsvPath))
-                using (var csv = new CsvWriter(writer, CultureInfo.InvariantCulture))
-                {
-                    csv.WriteRecords(_allProjects);
-                }
+                await _projectRepo.SaveAllProjectsAsync(_allProjects).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"Fehler beim Speichern der Projekte in CSV: {ex.Message}");
-                DisplayAlert("Fehler", $"Projekte konnten nicht gespeichert werden: {ex.Message}", "OK");
+                await DisplayAlert("Fehler", $"Projekte konnten nicht gespeichert werden: {ex.Message}", "OK");
             }
         }
 
@@ -694,17 +665,23 @@ namespace PixFrameWorkspace
                 if (_selectedProject == null)
                 {
                     // Neue ProjectId vergeben
-                    project.ProjectId = _allProjects.Any() ? _allProjects.Max(p => p.ProjectId) + 1 : 1;
+                    project.ProjectId = await _projectRepo.GetNextProjectIdAsync().ConfigureAwait(false);
 
                     // PROJEKTORDNER ERSTELLEN
                     if (_currentCustomer != null)
                     {
-                        var customerManager = new CustomerManager();
-                        project.ProjectFolderPath = customerManager.CreateProjectFolder(_currentCustomer, project);
+                        project.ProjectFolderPath = _projectRepo.CreateProjectFolder(_currentCustomer, project);
                     }
 
-                    _projects.Add(project);
-                    StatusLabel.Text = $"Projekt {project.ProjectName} erstellt";
+                    await _projectRepo.AddOrUpdateProjectAsync(project).ConfigureAwait(false);
+
+                    await Dispatcher.DispatchAsync(() =>
+                    {
+                        _allProjects.Add(project);
+                        FilterProjectsByCustomer();
+                        StatusLabel.Text = $"Projekt {project.ProjectName} erstellt";
+                    });
+
                     await DisplayAlert("Erfolg", "Projekt erfolgreich erstellt", "OK");
                 }
                 else
@@ -714,20 +691,22 @@ namespace PixFrameWorkspace
                     project.CreatedDate = _selectedProject.CreatedDate;
                     project.ProjectFolderPath = _selectedProject.ProjectFolderPath;
 
-                    var index = _projects.IndexOf(_selectedProject);
-                    if (index != -1)
+                    await _projectRepo.AddOrUpdateProjectAsync(project).ConfigureAwait(false);
+
+                    await Dispatcher.DispatchAsync(() =>
                     {
-                        _projects[index] = project;
-                    }
-                    StatusLabel.Text = $"Projekt {project.ProjectName} aktualisiert";
+                        var index = _allProjects.FindIndex(p => p.ProjectId == project.ProjectId);
+                        if (index != -1)
+                        {
+                            _allProjects[index] = project;
+                        }
+
+                        FilterProjectsByCustomer();
+                        StatusLabel.Text = $"Projekt {project.ProjectName} aktualisiert";
+                    });
+
                     await DisplayAlert("Erfolg", "Projekt erfolgreich aktualisiert", "OK");
                 }
-
-                // PROJEKTE IN CSV SPEICHERN
-                SaveProjectsToCsv();
-
-                // Projekte neu filtern und anzeigen
-                FilterProjectsByCustomer();
             }
             catch (Exception ex)
             {
@@ -788,7 +767,6 @@ namespace PixFrameWorkspace
             try
             {
                 var customerManager = new CustomerManager();
-                // zuvor: var success = customerManager.OpenCustomerFolder(_currentCustomer);
                 var success = await customerManager.OpenCustomerFolderAsync(_currentCustomer).ConfigureAwait(false);
 
                 if (success)

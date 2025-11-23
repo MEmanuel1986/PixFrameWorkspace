@@ -10,6 +10,7 @@ namespace PixFrameWorkspace
     {
         private Customer _selectedCustomer;
         private CustomerManager _customerManager;
+        private bool _isLoadingCustomers = false;
 
         // ObservableCollection für Datenbindung
         public ObservableCollection<Customer> Customers { get; set; } = new ObservableCollection<Customer>();
@@ -98,9 +99,12 @@ namespace PixFrameWorkspace
             VatIdEntry.Text = customer.VatId;
         }
 
-        // Kunden laden - ASYNCHRON
+        // Kunden laden - ASYNCHRON, mit Sperre gegen parallele Läufe
         private async Task LoadCustomersAsync()
         {
+            if (_isLoadingCustomers) return;
+
+            _isLoadingCustomers = true;
             try
             {
                 Customers.Clear();
@@ -122,6 +126,10 @@ namespace PixFrameWorkspace
             {
                 StatusLabel.Text = "Fehler beim Laden der Kunden";
                 await DisplayAlert("Fehler", $"Fehler beim Laden der Kunden: {ex.Message}", "OK");
+            }
+            finally
+            {
+                _isLoadingCustomers = false;
             }
         }
 
@@ -331,7 +339,7 @@ namespace PixFrameWorkspace
         protected override void OnAppearing()
         {
             base.OnAppearing();
-            // Stelle sicher, dass die Daten aktuell sind
+            // Lade nur, wenn nicht bereits geladen oder aktives Laden läuft
             _ = LoadCustomersAsync();
         }
     }
