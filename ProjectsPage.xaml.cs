@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Microsoft.Maui.Controls;
 using CsvHelper;
 using System.Globalization;
+using System.Diagnostics;
 
 namespace PixFrameWorkspace
 {
@@ -59,6 +60,10 @@ namespace PixFrameWorkspace
             {
                 await _projectRepo.InitializeAsync().ConfigureAwait(false);
 
+                // Debug: zeige den Pfad, in den das Repository schreibt
+                var repoPath = _projectRepo.ProjectsFilePath;
+                Debug.WriteLine($"[ProjectsPage] ProjectRepository path = {repoPath}");
+
                 // Setze _currentCustomer falls ein initialCustomer übergeben wurde
                 if (_initialCustomer != null)
                 {
@@ -79,6 +84,7 @@ namespace PixFrameWorkspace
             }
             catch (Exception ex)
             {
+                Debug.WriteLine($"Fehler bei Init ProjectsPage: {ex}");
                 Console.WriteLine($"Fehler bei Init ProjectsPage: {ex.Message}");
             }
         }
@@ -143,7 +149,7 @@ namespace PixFrameWorkspace
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Fehler beim Filtern der Projekte: {ex.Message}");
+                Debug.WriteLine($"Fehler beim Filtern der Projekte: {ex}");
             }
         }
 
@@ -152,9 +158,11 @@ namespace PixFrameWorkspace
             try
             {
                 await _projectRepo.SaveAllProjectsAsync(_allProjects).ConfigureAwait(false);
+                Debug.WriteLine($"[ProjectsPage] SaveProjectsToCsv: saved {_allProjects.Count} projects to {_projectRepo.ProjectsFilePath}");
             }
             catch (Exception ex)
             {
+                Debug.WriteLine($"[ProjectsPage] SaveProjectsToCsv Fehler: {ex}");
                 Console.WriteLine($"Fehler beim Speichern der Projekte in CSV: {ex.Message}");
                 await DisplayAlert("Fehler", $"Projekte konnten nicht gespeichert werden: {ex.Message}", "OK");
             }
@@ -237,7 +245,7 @@ namespace PixFrameWorkspace
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Fehler beim Laden der Tools-Konfiguration: {ex.Message}");
+                Debug.WriteLine($"Fehler beim Laden der Tools-Konfiguration: {ex}");
                 StartToolButton.IsEnabled = false;
             }
         }
@@ -332,24 +340,6 @@ namespace PixFrameWorkspace
                     return @"C:\Program Files\Camerabag Photo\Camerabag Photo.exe";
                 default:
                     return null;
-            }
-        }
-
-        private string GetProcessName(string toolName)
-        {
-            switch (toolName)
-            {
-                case "Photoshop": return "photoshop";
-                case "Lightroom": return "lightroom";
-                case "GIMP": return "gimp";
-                case "Affinity Photo": return "affinityphoto";
-                case "DaVinci Resolve": return "davinciresolve";
-                case "iMovie": return "imovie";
-                case "Premiere Pro": return "adobe premiere pro";
-                case "Final Cut Pro": return "finalcutpro";
-                case "Capture One": return "captureone";
-                case "Camerabag": return "camerabag";
-                default: return toolName.ToLower();
             }
         }
         #endregion
@@ -508,7 +498,7 @@ namespace PixFrameWorkspace
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Fehler beim Generieren des Projektnamens: {ex.Message}");
+                Debug.WriteLine($"Fehler beim Generieren des Projektnamens: {ex}");
             }
         }
         #endregion
@@ -828,58 +818,6 @@ namespace PixFrameWorkspace
             catch (Exception ex)
             {
                 await DisplayAlert("Fehler", $"Fehler beim Auswählen des Videos: {ex.Message}", "OK");
-            }
-        }
-
-        private async void OnAddContractClicked(object sender, EventArgs e)
-        {
-            try
-            {
-                var fileResult = await FilePicker.Default.PickAsync(new PickOptions
-                {
-                    PickerTitle = "Vertrag auswählen",
-                    FileTypes = new FilePickerFileType(
-                        new Dictionary<DevicePlatform, IEnumerable<string>>
-                        {
-                            { DevicePlatform.WinUI, new[] { ".pdf", ".doc", ".docx" } },
-                            { DevicePlatform.MacCatalyst, new[] { ".pdf", ".doc", ".docx" } }
-                        })
-                });
-
-                if (fileResult != null)
-                {
-                    await DisplayAlert("Erfolg", $"Vertrag ausgewählt: {fileResult.FileName}", "OK");
-                }
-            }
-            catch (Exception ex)
-            {
-                await DisplayAlert("Fehler", $"Fehler beim Auswählen des Vertrags: {ex.Message}", "OK");
-            }
-        }
-
-        private async void OnAddInvoiceClicked(object sender, EventArgs e)
-        {
-            try
-            {
-                var fileResult = await FilePicker.Default.PickAsync(new PickOptions
-                {
-                    PickerTitle = "Rechnung auswählen",
-                    FileTypes = new FilePickerFileType(
-                        new Dictionary<DevicePlatform, IEnumerable<string>>
-                        {
-                            { DevicePlatform.WinUI, new[] { ".pdf", ".doc", ".docx" } },
-                            { DevicePlatform.MacCatalyst, new[] { ".pdf", ".doc", ".docx" } }
-                        })
-                });
-
-                if (fileResult != null)
-                {
-                    await DisplayAlert("Erfolg", $"Rechnung ausgewählt: {fileResult.FileName}", "OK");
-                }
-            }
-            catch (Exception ex)
-            {
-                await DisplayAlert("Fehler", $"Fehler beim Auswählen der Rechnung: {ex.Message}", "OK");
             }
         }
         #endregion
