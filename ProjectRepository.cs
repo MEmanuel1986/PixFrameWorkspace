@@ -1,206 +1,222 @@
-﻿using System.Collections.ObjectModel;
+﻿using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.IO;
+using System.Linq;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+using CsvHelper;
+using CsvHelper.Configuration;
+using System.Globalization;
+using System.Diagnostics;
 
 namespace PixFrameWorkspace
 {
-    public static class ProjectRepository
+    /// <summary>
+    /// Asynchrones Repository für Projekte (CSV-basiert).
+    /// Thread-safe über SemaphoreSlim; atomisches Schreiben mittels Temp-File.
+    /// </summary>
+    public class ProjectRepository
     {
-        private static readonly string _projectsFilePath;
-        private static ObservableCollection<Project> _projects = new ObservableCollection<Project>();
+        private readonly string _projectsFilePath;
+        private readonly SemaphoreSlim _lock = new SemaphoreSlim(1, 1);
+        private ObservableCollection<Project> _projects = new ObservableCollection<Project>();
 
-        static ProjectRepository()
+        public ProjectRepository()
         {
             _projectsFilePath = Path.Combine(AppConfig.Settings.FullDataPath, "projects.csv");
-            LoadProjects();
+            Directory.CreateDirectory(AppConfig.Settings.FullDataPath);
+
+            Debug.WriteLine($"[ProjectRepository] ctor: projectsFilePath = {_projectsFilePath}");
         }
 
-        public static ObservableCollection<Project> Projects => _projects;
+        // öffentliches readonly-Property, um zur Laufzeit den Pfad zu sehen
+        public string ProjectsFilePath => _projectsFilePath;
 
-        public static void LoadProjects()
+        public async Task InitializeAsync()
         {
-            _projects.Clear();
+            await LoadProjectsAsync().ConfigureAwait(false);
+        }
 
+        public async Task<List<Project>> GetAllProjectsAsync()
+        {
+            await _lock.WaitAsync().ConfigureAwait(false);
             try
             {
-                if (File.Exists(_projectsFilePath))
+                return _projects.ToList();
+            }
+            finally
+            {
+                _lock.Release();
+            }
+        }
+
+        public async Task LoadProjectsAsync()
+        {
+            await _lock.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                Debug.WriteLine($"[ProjectRepository] LoadProjectsAsync: reading from {_projectsFilePath}");
+
+                _projects.Clear();
+
+                if (!File.Exists(_projectsFilePath))
                 {
-                    var lines = File.ReadAllLines(_projectsFilePath, Encoding.UTF8);
-
-                    // Header überspringen
-                    for (int i = 1; i < lines.Length; i++)
+                    // Ensure directory and header
+                    Directory.CreateDirectory(Path.GetDirectoryName(_projectsFilePath));
+                    var config = new CsvConfiguration(CultureInfo.InvariantCulture) { HasHeaderRecord = true };
+                    using (var writer = new StreamWriter(_projectsFilePath, false, Encoding.UTF8))
+                    using (var csv = new CsvWriter(writer, config))
                     {
-                        var line = lines[i];
-                        var parts = line.Split(',');
+                        csv.WriteHeader<Project>();
+                        csv.NextRecord();
+                    }
+                    Debug.WriteLine($"[ProjectRepository] LoadProjectsAsync: created new csv with header at {_projectsFilePath}");
+                    return;
+                }
 
-                        // Angepasst für neue Struktur (18 Felder)
-                        if (parts.Length >= 11)
+                using (var stream = File.Open(_projectsFilePath, FileMode.Open, FileAccess.Read, FileShare.Read))
+                using (var reader = new StreamReader(stream, Encoding.UTF8))
+                {
+                    var config = new CsvConfiguration(CultureInfo.InvariantCulture)
+                    {
+                        HasHeaderRecord = true,
+                        MissingFieldFound = null,
+                        BadDataFound = context => { Debug.WriteLine($"[ProjectRepository] Bad CSV data: {context.RawRecord}"); },
+                        IgnoreBlankLines = true,
+                        TrimOptions = TrimOptions.Trim
+                    };
+
+                    using var csv = new CsvReader(reader, config);
+                    try
+                    {
+                        await foreach (var p in csv.GetRecordsAsync<Project>())
                         {
-                            var project = new Project
-                            {
-                                ProjectId = int.Parse(parts[0]),
-                                CustomerNumber = int.Parse(parts[1]),
-                                ProjectName = UnescapeCsvField(parts[2]),
-                                Category = UnescapeCsvField(parts[3]),
-                                CreatedDate = DateTime.Parse(parts[4]),
-                                Booking = string.IsNullOrEmpty(parts[5]) ? null : DateTime.Parse(parts[5]),
-                                Status = UnescapeCsvField(parts[6]),
-                                ProjectFolderPath = UnescapeCsvField(parts[7]),
-                                Notes = UnescapeCsvField(parts[8]),
-                                Location = UnescapeCsvField(parts[9]),
-                                BookingTime = TimeSpan.Parse(parts[10]),
-                                // NEUE FELDER
-                                Fotografie = parts.Length > 11 ? bool.Parse(parts[11]) : false,
-                                Videografie = parts.Length > 12 ? bool.Parse(parts[12]) : false,
-                                Glueckwunschkarten = parts.Length > 13 ? bool.Parse(parts[13]) : false,
-                                GettingReady = parts.Length > 14 ? bool.Parse(parts[14]) : false,
-                                GettingReadyEr = parts.Length > 15 ? bool.Parse(parts[15]) : false,
-                                GettingReadySie = parts.Length > 16 ? bool.Parse(parts[16]) : false,
-                                GettingReadyBeide = parts.Length > 17 ? bool.Parse(parts[17]) : false
-                            };
-                            _projects.Add(project);
+                            if (p == null) continue;
+                            // Basic cleanup
+                            p.ProjectName = p.ProjectName?.Trim() ?? string.Empty;
+                            _projects.Add(p);
                         }
+
+                        Debug.WriteLine($"[ProjectRepository] LoadProjectsAsync: loaded {_projects.Count} projects");
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[ProjectRepository] LoadProjectsAsync parse error: {ex}");
+                        // ignore parse errors for now (could log)
                     }
                 }
             }
-            catch (Exception ex)
+            finally
             {
-                Console.WriteLine($"Fehler beim Laden der Projekte: {ex.Message}");
+                _lock.Release();
             }
         }
 
-        public static void SaveProjects()
+        public async Task SaveAllProjectsAsync(IEnumerable<Project> projects)
         {
+            await _lock.WaitAsync().ConfigureAwait(false);
+            var tempFile = _projectsFilePath + ".tmp";
             try
             {
-                var lines = new List<string>
-                {
-                    // NEUE CSV-STRUKTUR mit 18 Spalten
-                    "ProjectId,CustomerNumber,ProjectName,Category,CreatedDate,Booking,Status,ProjectFolderPath,Notes,Location,BookingTime,Fotografie,Videografie,Glueckwunschkarten,GettingReady,GettingReadyEr,GettingReadySie,GettingReadyBeide"
-                };
+                Debug.WriteLine($"[ProjectRepository] SaveAllProjectsAsync: saving to {_projectsFilePath} (temp {tempFile})");
 
-                foreach (var project in _projects)
+                Directory.CreateDirectory(Path.GetDirectoryName(_projectsFilePath));
+                var config = new CsvConfiguration(CultureInfo.InvariantCulture) { HasHeaderRecord = true };
+
+                using (var stream = File.Open(tempFile, FileMode.Create, FileAccess.Write, FileShare.None))
+                using (var writer = new StreamWriter(stream, Encoding.UTF8))
+                using (var csv = new CsvWriter(writer, config))
                 {
-                    var line = $"{project.ProjectId}," +
-                              $"{project.CustomerNumber}," +
-                              $"{EscapeCsvField(project.ProjectName)}," +
-                              $"{EscapeCsvField(project.Category)}," +
-                              $"{project.CreatedDate:yyyy-MM-dd HH:mm:ss}," +
-                              $"{(project.Booking.HasValue ? project.Booking.Value.ToString("yyyy-MM-dd HH:mm:ss") : "")}," +
-                              $"{EscapeCsvField(project.Status)}," +
-                              $"{EscapeCsvField(project.ProjectFolderPath)}," +
-                              $"{EscapeCsvField(project.Notes)}," +
-                              $"{EscapeCsvField(project.Location)}," +
-                              $"{project.BookingTime}," +
-                              $"{project.Fotografie}," +
-                              $"{project.Videografie}," +
-                              $"{project.Glueckwunschkarten}," +
-                              $"{project.GettingReady}," +
-                              $"{project.GettingReadyEr}," +
-                              $"{project.GettingReadySie}," +
-                              $"{project.GettingReadyBeide}";
-                    lines.Add(line);
+                    csv.WriteHeader<Project>();
+                    await csv.NextRecordAsync().ConfigureAwait(false);
+                    foreach (var p in projects.OrderBy(p => p.ProjectId))
+                    {
+                        csv.WriteRecord(p);
+                        await csv.NextRecordAsync().ConfigureAwait(false);
+                    }
+                    await writer.FlushAsync().ConfigureAwait(false);
                 }
 
-                File.WriteAllLines(_projectsFilePath, lines, Encoding.UTF8);
+                if (File.Exists(_projectsFilePath))
+                    File.Replace(tempFile, _projectsFilePath, null);
+                else
+                    File.Move(tempFile, _projectsFilePath);
+
+                Debug.WriteLine($"[ProjectRepository] SaveAllProjectsAsync: wrote file {_projectsFilePath}");
+
+                // update in-memory collection
+                _projects = new ObservableCollection<Project>(projects.OrderBy(p => p.ProjectId));
             }
-            catch (Exception ex)
+            finally
             {
-                Console.WriteLine($"Fehler beim Speichern der Projekte: {ex.Message}");
-            }
-        }
-
-        public static ObservableCollection<Project> GetProjectsByCustomer(int customerNumber)
-        {
-            return new ObservableCollection<Project>(
-                _projects.Where(p => p.CustomerNumber == customerNumber)
-            );
-        }
-
-        public static int GetNextProjectId()
-        {
-            return _projects.Count > 0 ? _projects.Max(p => p.ProjectId) + 1 : 1;
-        }
-
-        public static void AddProject(Project project)
-        {
-            _projects.Add(project);
-            SaveProjects();
-        }
-
-        public static void UpdateProject(Project project)
-        {
-            var existing = _projects.FirstOrDefault(p => p.ProjectId == project.ProjectId);
-            if (existing != null)
-            {
-                _projects.Remove(existing);
-                _projects.Add(project);
-                SaveProjects();
+                try { if (File.Exists(tempFile)) File.Delete(tempFile); } catch { }
+                _lock.Release();
             }
         }
 
-        public static void DeleteProject(int projectId)
+        public async Task<IEnumerable<Project>> GetProjectsByCustomerAsync(int customerNumber)
         {
-            var project = _projects.FirstOrDefault(p => p.ProjectId == projectId);
-            if (project != null)
+            var all = await GetAllProjectsAsync().ConfigureAwait(false);
+            return all.Where(p => p.CustomerNumber == customerNumber).ToList();
+        }
+
+        public async Task<int> GetNextProjectIdAsync()
+        {
+            var all = await GetAllProjectsAsync().ConfigureAwait(false);
+            return all.Any() ? all.Max(p => p.ProjectId) + 1 : 1;
+        }
+
+        public async Task AddOrUpdateProjectAsync(Project project)
+        {
+            await _lock.WaitAsync().ConfigureAwait(false);
+            try
             {
-                _projects.Remove(project);
-                SaveProjects();
+                var list = _projects.ToList();
+                var existing = list.FirstOrDefault(p => p.ProjectId == project.ProjectId);
+                if (existing != null)
+                {
+                    var idx = list.IndexOf(existing);
+                    list[idx] = project;
+                }
+                else
+                {
+                    list.Add(project);
+                }
+
+                await SaveAllProjectsAsync(list).ConfigureAwait(false);
+            }
+            finally
+            {
+                _lock.Release();
             }
         }
 
-        // FEHLENDE METHODEN HINZUGEFÜGT:
-        private static string EscapeCsvField(string field)
+        public async Task DeleteProjectAsync(int projectId)
         {
-            if (string.IsNullOrEmpty(field)) return "";
-            if (field.Contains(",") || field.Contains("\"") || field.Contains("\n"))
+            await _lock.WaitAsync().ConfigureAwait(false);
+            try
             {
-                return $"\"{field.Replace("\"", "\"\"")}\"";
+                var list = _projects.ToList();
+                var existing = list.FirstOrDefault(p => p.ProjectId == projectId);
+                if (existing != null)
+                {
+                    list.Remove(existing);
+                    await SaveAllProjectsAsync(list).ConfigureAwait(false);
+                }
             }
-            return field;
+            finally
+            {
+                _lock.Release();
+            }
         }
 
-        private static string UnescapeCsvField(string field)
+        // Optional helper that uses CustomerManager to create project folder for customer
+        public string CreateProjectFolder(Customer customer, Project project)
         {
-            if (string.IsNullOrEmpty(field)) return string.Empty;
-
-            if (field.StartsWith("\"") && field.EndsWith("\""))
-            {
-                field = field.Substring(1, field.Length - 2);
-                field = field.Replace("\"\"", "\"");
-            }
-            return field;
-        }
-
-        public static string CreateProjectFolder(Customer customer, Project project)
-        {
-            string projectFolderName = $"P_{project.ProjectId}_{project.ProjectName.Replace(" ", "_")}";
-            foreach (char invalidChar in Path.GetInvalidFileNameChars())
-            {
-                projectFolderName = projectFolderName.Replace(invalidChar, '_');
-            }
-
-            string customerProjectsPath = Path.Combine(AppConfig.Settings.FullCustomersPath, $"C_{customer.CustomerNumber}", "01_Projects");
-            string projectFolderPath = Path.Combine(customerProjectsPath, projectFolderName);
-
-            Directory.CreateDirectory(projectFolderPath);
-
-            // Projekt-spezifische Unterordner erstellen
-            var projectSubfolders = new[]
-            {
-                "Contracts",
-                "Invoices",
-                "Images",
-                "Videos",
-                "Documents",
-                "Assets"
-            };
-
-            foreach (var folder in projectSubfolders)
-            {
-                Directory.CreateDirectory(Path.Combine(projectFolderPath, folder));
-            }
-
-            return projectFolderPath;
+            var cm = new CustomerManager();
+            return cm.CreateProjectFolder(customer, project);
         }
     }
 }

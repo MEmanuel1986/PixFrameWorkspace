@@ -2,21 +2,13 @@
 {
     public partial class App : Application
     {
-        public App()
+        private readonly IServiceProvider serviceProvider;
+
+        public App(IServiceProvider serviceProvider)
         {
             InitializeComponent();
-
-            // Moderne .NET MAUI Initialisierung
-            MainPage = new NavigationPage(new MainPage());
+            this.serviceProvider = serviceProvider;
+            MainPage = serviceProvider.GetRequiredService<MainPage>();
         }
-
-        // Alternative: Noch modernerer Ansatz
-        //protected override Window CreateWindow(IActivationState activationState)
-        //{
-        //    return new Window(new NavigationPage(new MainPage()))
-        //    {
-        //        Title = "PixFrameWorkspace"
-        //    };
-        //}
     }
 }
