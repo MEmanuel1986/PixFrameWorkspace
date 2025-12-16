@@ -7,11 +7,13 @@ using System.Threading.Tasks;
 using CsvHelper;
 using CsvHelper.Configuration;
 using System.Globalization;
+using System.Diagnostics;
 
 namespace PixFrameWorkspace
 {
     /// <summary>
     /// Asynchroner CustomerManager: liest und schreibt Customers.csv mit CsvHelper.
+    /// Nutzt AppConfig.Settings.FullDataPath / FullCustomersPath für Pfade (einheitlich).
     /// </summary>
     public class CustomerManager
     {
@@ -20,12 +22,20 @@ namespace PixFrameWorkspace
 
         public CustomerManager()
         {
-            _dataFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "PixFrameWorkspace", "Data");
+            // Verwende AppConfig-Einstellungen (einheitlicher Pfad)
+            _dataFolder = AppConfig.Settings.FullDataPath ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "PixFrameWorkspace", "Data");
             _csvFilePath = Path.Combine(_dataFolder, "customers.csv");
 
+            // Stelle sicher, dass Verzeichnisse existieren
             Directory.CreateDirectory(_dataFolder);
+
             EnsureCsvFileExists();
+
+            Debug.WriteLine($"[CustomerManager] DataFolder={_dataFolder}, CsvPath={_csvFilePath}");
         }
+
+        public string DataFolder => _dataFolder;
+        public string CsvFilePath => _csvFilePath;
 
         private void EnsureCsvFileExists()
         {
@@ -36,9 +46,6 @@ namespace PixFrameWorkspace
             }
         }
 
-        /// <summary>
-        /// Liest alle Kunden asynchron und robust via CsvHelper.
-        /// </summary>
         public async Task<List<Customer>> GetAllCustomersAsync()
         {
             var customers = new List<Customer>();
@@ -55,46 +62,48 @@ namespace PixFrameWorkspace
                 {
                     HasHeaderRecord = true,
                     MissingFieldFound = null,
-                    BadDataFound = context => { /* optional: log context.RawRecord */ },
+                    BadDataFound = context => Debug.WriteLine($"[CustomerManager] Bad CSV data: {context.RawRecord}"),
                     IgnoreBlankLines = true,
                     TrimOptions = TrimOptions.Trim
                 };
 
                 using var csv = new CsvReader(reader, config);
-
-                await foreach (var customer in csv.GetRecordsAsync<Customer>())
+                try
                 {
-                    if (customer == null) continue;
-                    if (customer.CustomerNumber <= 0) continue;
+                    await foreach (var customer in csv.GetRecordsAsync<Customer>())
+                    {
+                        if (customer == null) continue;
+                        if (customer.CustomerNumber <= 0) continue;
 
-                    // Basisbereinigung
-                    customer.FirstName = customer.FirstName?.Trim() ?? string.Empty;
-                    customer.LastName = customer.LastName?.Trim() ?? string.Empty;
-                    customer.Company = customer.Company?.Trim() ?? string.Empty;
-                    customer.Email = customer.Email?.Trim() ?? string.Empty;
-                    customer.Phone = customer.Phone?.Trim() ?? string.Empty;
-                    customer.Street = customer.Street?.Trim() ?? string.Empty;
-                    customer.HouseNumber = customer.HouseNumber?.Trim() ?? string.Empty;
-                    customer.ZipCode = customer.ZipCode?.Trim() ?? string.Empty;
-                    customer.City = customer.City?.Trim() ?? string.Empty;
-                    customer.VatId = customer.VatId?.Trim() ?? string.Empty;
-                    customer.FolderPath = customer.FolderPath?.Trim() ?? string.Empty;
+                        // Basisbereinigung
+                        customer.FirstName = customer.FirstName?.Trim() ?? string.Empty;
+                        customer.LastName = customer.LastName?.Trim() ?? string.Empty;
+                        customer.Company = customer.Company?.Trim() ?? string.Empty;
+                        customer.Email = customer.Email?.Trim() ?? string.Empty;
+                        customer.Phone = customer.Phone?.Trim() ?? string.Empty;
+                        customer.Street = customer.Street?.Trim() ?? string.Empty;
+                        customer.HouseNumber = customer.HouseNumber?.Trim() ?? string.Empty;
+                        customer.ZipCode = customer.ZipCode?.Trim() ?? string.Empty;
+                        customer.City = customer.City?.Trim() ?? string.Empty;
+                        customer.VatId = customer.VatId?.Trim() ?? string.Empty;
+                        customer.FolderPath = customer.FolderPath?.Trim() ?? string.Empty;
 
-                    customers.Add(customer);
+                        customers.Add(customer);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[CustomerManager] GetAllCustomersAsync parse error: {ex}");
                 }
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // Caller handles/logs errors if needed.
-                // Returning partial list if any was parsed.
+                Debug.WriteLine($"[CustomerManager] GetAllCustomersAsync IO error: {ex}");
             }
 
             return customers;
         }
 
-        /// <summary>
-        /// Speichert oder aktualisiert einen Kunden asynchron.
-        /// </summary>
         public async Task SaveCustomerAsync(Customer customer)
         {
             var allCustomers = await GetAllCustomersAsync().ConfigureAwait(false);
@@ -118,9 +127,6 @@ namespace PixFrameWorkspace
             await SaveAllCustomersAsync(allCustomers).ConfigureAwait(false);
         }
 
-        /// <summary>
-        /// Speichert die komplette Kundenliste asynchron via CsvHelper.
-        /// </summary>
         public async Task SaveAllCustomersAsync(List<Customer> customers)
         {
             var config = new CsvConfiguration(CultureInfo.InvariantCulture)
@@ -128,7 +134,6 @@ namespace PixFrameWorkspace
                 HasHeaderRecord = true
             };
 
-            // Create/overwrite atomar
             var tempFile = _csvFilePath + ".tmp";
             try
             {
@@ -141,8 +146,6 @@ namespace PixFrameWorkspace
 
                     foreach (var c in customers.OrderBy(cu => cu.CustomerNumber))
                     {
-                        // WriteRecordAsync ist nicht in allen CsvHelper-Versionen vorhanden.
-                        // Verwende WriteRecord + NextRecordAsync für Kompatibilität.
                         csv.WriteRecord(c);
                         await csv.NextRecordAsync().ConfigureAwait(false);
                     }
@@ -150,15 +153,16 @@ namespace PixFrameWorkspace
                     await writer.FlushAsync().ConfigureAwait(false);
                 }
 
-                // Replace original file
                 if (File.Exists(_csvFilePath))
                     File.Replace(tempFile, _csvFilePath, null);
                 else
                     File.Move(tempFile, _csvFilePath);
+
+                Debug.WriteLine($"[CustomerManager] SaveAllCustomersAsync: wrote {_csvFilePath}");
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // Aufräumen bei Fehler
+                Debug.WriteLine($"[CustomerManager] SaveAllCustomersAsync Fehler: {ex}");
                 try { if (File.Exists(tempFile)) File.Delete(tempFile); } catch { }
                 throw;
             }
@@ -173,10 +177,8 @@ namespace PixFrameWorkspace
         public string GetCustomerFolderPath(int customerNumber, string lastName, string firstName)
         {
             string folderName = $"C_{customerNumber}_{RemoveInvalidFileNameChars(lastName)}_{RemoveInvalidFileNameChars(firstName)}";
-            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-                                "PixFrameWorkspace",
-                                "Customers",
-                                folderName);
+            var customersBase = AppConfig.Settings.FullCustomersPath ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "PixFrameWorkspace", "Customers");
+            return Path.Combine(customersBase, folderName);
         }
 
         public string GetCustomerFolderPath(Customer customer) => GetCustomerFolderPath(customer.CustomerNumber, customer.LastName, customer.FirstName);
@@ -243,6 +245,16 @@ namespace PixFrameWorkspace
             File.WriteAllText(infoFilePath, infoContent, Encoding.UTF8);
         }
 
+        private string RemoveInvalidFileNameChars(string filename)
+        {
+            if (string.IsNullOrEmpty(filename))
+                return "Unknown";
+
+            var invalidChars = Path.GetInvalidFileNameChars();
+            return new string(filename.Where(ch => !invalidChars.Contains(ch)).ToArray());
+        }
+
+        // --- Projektordner / Info erstellen (neu ergänzt) ---
         public string CreateProjectFolder(Customer customer, Project project)
         {
             string customerFolderPath = GetCustomerFolderPath(customer);
@@ -326,18 +338,6 @@ namespace PixFrameWorkspace
             File.WriteAllText(infoFilePath, infoContent, Encoding.UTF8);
         }
 
-        private string RemoveInvalidFileNameChars(string filename)
-        {
-            if (string.IsNullOrEmpty(filename))
-                return "Unknown";
-
-            var invalidChars = Path.GetInvalidFileNameChars();
-            return new string(filename.Where(ch => !invalidChars.Contains(ch)).ToArray());
-        }
-
-        /// <summary>
-        /// Öffnet den Kundenordner (plattformabhängig). Gibt true bei Erfolg zurück.
-        /// </summary>
         public async Task<bool> OpenCustomerFolderAsync(Customer customer)
         {
             try
@@ -348,7 +348,6 @@ namespace PixFrameWorkspace
                     CreateCustomerFolder(customer);
                 }
 
-                // Start des Explorers/Finders (synchroner OS-Aufruf, kept simple)
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo()
                 {
                     FileName = folderPath,

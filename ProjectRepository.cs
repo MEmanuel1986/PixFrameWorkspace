@@ -149,12 +149,6 @@ namespace PixFrameWorkspace
                 // update in-memory collection
                 _projects = new ObservableCollection<Project>(projects.OrderBy(p => p.ProjectId));
             }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[ProjectRepository] SaveAllProjectsAsync Fehler: {ex}");
-                // Rethrow so callers see the failure; also logged above
-                throw;
-            }
             finally
             {
                 try { if (File.Exists(tempFile)) File.Delete(tempFile); } catch { }
