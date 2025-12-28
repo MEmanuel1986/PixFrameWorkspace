@@ -2,14 +2,10 @@
 {
     public partial class App : Application
     {
-        private readonly IServiceProvider serviceProvider;
-
-        public App(IServiceProvider serviceProvider)
+        public App(MainPage mainPage)
         {
             InitializeComponent();
-            this.serviceProvider = serviceProvider;
-            MainPage = serviceProvider.GetRequiredService<MainPage>();
+            MainPage = new NavigationPage(mainPage);
         }
-
     }
 }
