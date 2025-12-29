@@ -11,10 +11,6 @@ using System.Diagnostics;
 
 namespace PixFrameWorkspace
 {
-    /// <summary>
-    /// Asynchroner CustomerManager: liest und schreibt Customers.csv mit CsvHelper.
-    /// Nutzt AppConfig.Settings.FullDataPath / FullCustomersPath für Pfade (einheitlich).
-    /// </summary>
     public class CustomerManager
     {
         private readonly string _dataFolder;
