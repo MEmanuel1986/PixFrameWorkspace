@@ -5,7 +5,9 @@
         public App(MainPage mainPage)
         {
             InitializeComponent();
-            MainPage = new NavigationPage(mainPage);
+
+            // Moderne .NET MAUI Initialisierung
+            MainPage = new NavigationPage(new MainPage());
         }
     }
 }

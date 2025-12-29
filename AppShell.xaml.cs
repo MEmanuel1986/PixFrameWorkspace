@@ -1,10 +1,15 @@
-﻿namespace PixFrameWorkspace
+﻿using Microsoft.Maui.Controls;
+
+namespace PixFrameWorkspace;
+
+public partial class App : Application
 {
-    public partial class AppShell : Shell
+    // App erhält MainPage via DI (MainPage ist transient; ihre Abhängigkeiten werden injiziert)
+    public App(MainPage mainPage)
     {
-        public AppShell()
-        {
-            InitializeComponent();
-        }
+        InitializeComponent();
+
+        // MainPage wird in eine NavigationPage gepackt
+        MainPage = new NavigationPage(mainPage);
     }
 }
