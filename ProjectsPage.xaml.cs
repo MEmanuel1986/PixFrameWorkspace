@@ -16,6 +16,13 @@ namespace PixFrameWorkspace
     {
         private Customer _currentCustomer;
         private Customer _initialCustomer; // falls Konstruktor mit Customer verwendet wurde
+
+        public Customer SelectedCustomer
+        {
+            get => _initialCustomer;
+            set => _initialCustomer = value;
+        }
+
         private List<Project> _projects = new List<Project>();
         private List<Project> _allProjects = new List<Project>(); // Alle Projekte aus Repository
         private Project _selectedProject;

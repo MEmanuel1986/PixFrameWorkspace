@@ -16,11 +16,10 @@ public static class MauiProgram
                 fonts.AddFont("OpenSans-Semibold.ttf", "OpenSansSemibold");
             });
 
-        // DI Registrierungen: Repositories / Manager / Pages
+        // DI-Registrierungen
         builder.Services.AddSingleton<CustomerManager>();
         builder.Services.AddSingleton<ProjectRepository>();
 
-        // Pages als transient (werden bei Navigation neu erzeugt, DI füllt Abhängigkeiten)
         builder.Services.AddTransient<MainPage>();
         builder.Services.AddTransient<ProjectsPage>();
         builder.Services.AddTransient<SettingsPage>();
