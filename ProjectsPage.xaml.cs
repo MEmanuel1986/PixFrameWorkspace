@@ -15,12 +15,20 @@ namespace PixFrameWorkspace
     public partial class ProjectsPage : ContentPage
     {
         private Customer _currentCustomer;
-        private Customer _initialCustomer; // falls Konstruktor mit Customer verwendet wurde
+        private Customer _initialCustomer; // falls Customer per Property übergeben wurde
 
         public Customer SelectedCustomer
         {
             get => _initialCustomer;
-            set => _initialCustomer = value;
+            set
+            {
+                _initialCustomer = value;
+                // Wenn bereits gesetzt, Initialisierung anstoßen
+                if (_projectRepo != null && _customerManager != null)
+                {
+                    _ = InitializeAsync();
+                }
+            }
         }
 
         private List<Project> _projects = new List<Project>();
@@ -32,7 +40,6 @@ namespace PixFrameWorkspace
         private readonly ProjectRepository _projectRepo;
         private readonly CustomerManager _customerManager;
 
-        // Neue Felder für Tools
         private List<ToolItem> _availableTools = new List<ToolItem>();
 
         // ToolItem Klasse für das Dropdown
@@ -43,7 +50,17 @@ namespace PixFrameWorkspace
             public string ApplicationPath { get; set; }
         }
 
-        // DI-fähiger Konstruktor
+        // Standard-Konstruktor fügt die nötigen Services ein
+        public ProjectsPage()
+        {
+            InitializeComponent();
+            _projectRepo = new ProjectRepository();
+            _customerManager = new CustomerManager();
+            SetupEventHandlers();
+            // Initialisiere nicht direkt, sondern erst nach SelectedCustomer/Property-Set!
+        }
+
+        // DI-fähiger Konstruktor (optional, falls du's aus Tests oder DI-Container nutzen willst)
         public ProjectsPage(ProjectRepository projectRepo, CustomerManager customerManager)
         {
             InitializeComponent();
@@ -73,7 +90,6 @@ namespace PixFrameWorkspace
                 if (_initialCustomer != null)
                 {
                     _currentCustomer = _initialCustomer;
-                    // UI-Thread-Updates für Title/Status/OpenFolder
                     Dispatcher.Dispatch(() =>
                     {
                         Title = $"Projekte - {_currentCustomer.DisplayName}";
@@ -84,7 +100,6 @@ namespace PixFrameWorkspace
 
                 _allProjects = (await _projectRepo.GetAllProjectsAsync().ConfigureAwait(false)).ToList();
 
-                // Filter und UI erst nachdem die Projekte geladen sind
                 FilterProjectsByCustomer();
             }
             catch (Exception ex)
@@ -96,15 +111,10 @@ namespace PixFrameWorkspace
 
         private void SetupEventHandlers()
         {
-            // Event-Handler für automatische Projektnamensgenerierung
             CategoryPicker.SelectedIndexChanged += OnCategoryPickerChanged;
             BookingDateEntry.TextChanged += OnBookingDateEntryChanged;
-
-            // Event-Handler für Getting Ready
             GettingReadyCheckBox.CheckedChanged += OnGettingReadyCheckedChanged;
             GettingReadyBeideCheckBox.CheckedChanged += OnGettingReadyBeideCheckedChanged;
-
-            // Event-Handler für Tools Picker
             ToolsPicker.SelectedIndexChanged += OnToolsPickerSelectedIndexChanged;
         }
 
@@ -113,6 +123,11 @@ namespace PixFrameWorkspace
             base.OnAppearing();
             LoadToolsConfiguration();
             UpdateProjectCount();
+            // Initialisiere Seite mit gegebenem Kunden (Property könnte erst jetzt gesetzt sein)
+            if (_initialCustomer != null && (_allProjects.Count == 0))
+            {
+                _ = InitializeAsync();
+            }
         }
 
         #region CSV Operations - via ProjectRepository
@@ -124,14 +139,12 @@ namespace PixFrameWorkspace
 
                 if (_currentCustomer != null)
                 {
-                    // Nur Projekte des aktuellen Kunden anzeigen
                     _projects = _allProjects
                         .Where(p => p.CustomerNumber == _currentCustomer.CustomerNumber)
                         .ToList();
                 }
                 else
                 {
-                    // Wenn kein Kunde ausgewählt ist, alle Projekte anzeigen
                     _projects = new List<Project>(_allProjects);
                 }
 
@@ -146,7 +159,6 @@ namespace PixFrameWorkspace
 
         private async Task PersistProjectsAndReloadAsync()
         {
-            // Speichere via Repo und lade danach die aktuelle Liste vom Repo
             await _projectRepo.SaveAllProjectsAsync(_allProjects).ConfigureAwait(false);
             _allProjects = (await _projectRepo.GetAllProjectsAsync().ConfigureAwait(false)).ToList();
         }
@@ -182,10 +194,9 @@ namespace PixFrameWorkspace
 
                     if (toolsConfig != null)
                     {
-                        // Nur aktivierte Tools zur Liste hinzufügen
                         foreach (var tool in toolsConfig)
                         {
-                            if (tool.Value) // Nur wenn Tool aktiviert ist
+                            if (tool.Value)
                             {
                                 var toolItem = CreateToolItem(tool.Key);
                                 if (toolItem != null)
@@ -194,11 +205,7 @@ namespace PixFrameWorkspace
                                 }
                             }
                         }
-
-                        // Dropdown mit verfügbaren Tools füllen
                         ToolsPicker.ItemsSource = _availableTools;
-
-                        // Start-Button aktivieren wenn Tools verfügbar
                         StartToolButton.IsEnabled = _availableTools.Any();
                     }
                 }
@@ -227,7 +234,6 @@ namespace PixFrameWorkspace
 
         private void OnToolsPickerSelectedIndexChanged(object sender, EventArgs e)
         {
-            // Start-Button aktivieren wenn ein Tool ausgewählt ist
             StartToolButton.IsEnabled = ToolsPicker.SelectedItem != null;
         }
 
@@ -247,7 +253,6 @@ namespace PixFrameWorkspace
         {
             try
             {
-                // Zuerst versuchen, über den ApplicationPath zu starten
                 if (!string.IsNullOrEmpty(tool.ApplicationPath) && File.Exists(tool.ApplicationPath))
                 {
                     System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
@@ -255,19 +260,16 @@ namespace PixFrameWorkspace
                         FileName = tool.ApplicationPath,
                         UseShellExecute = true
                     });
-
                     StatusLabel.Text = $"{tool.Name} wird gestartet...";
                     await DisplayAlert("Erfolg", $"{tool.Name} wurde gestartet.", "OK");
                 }
                 else
                 {
-                    // Fallback: Über ProcessName starten
                     System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
                     {
                         FileName = tool.ProcessName,
                         UseShellExecute = true
                     });
-
                     StatusLabel.Text = $"{tool.Name} wird gestartet...";
                     await DisplayAlert("Erfolg", $"{tool.Name} wurde gestartet.", "OK");
                 }
@@ -398,43 +400,29 @@ namespace PixFrameWorkspace
 
         private void DisplayProjectDetails(Project project)
         {
-            // Projekt-ID setzen
             ProjectIdLabel.Text = project.ProjectId.ToString();
-
-            // Projektname anzeigen
             GeneratedProjectNameLabel.Text = project.ProjectName;
-
-            // Kategorie setzen
             if (!string.IsNullOrEmpty(project.Category))
             {
                 CategoryPicker.SelectedItem = project.Category;
             }
 
-            // Dienstleistungen setzen
             FotografieCheckBox.IsChecked = project.Fotografie;
             VideografieCheckBox.IsChecked = project.Videografie;
             GlueckwunschkartenCheckBox.IsChecked = project.Glueckwunschkarten;
-
-            // Getting Ready setzen
             GettingReadyCheckBox.IsChecked = project.GettingReady;
-
-            // Getting Ready Optionen setzen und aktivieren/deaktivieren
             GettingReadyErCheckBox.IsChecked = project.GettingReadyEr;
             GettingReadySieCheckBox.IsChecked = project.GettingReadySie;
             GettingReadyBeideCheckBox.IsChecked = project.GettingReadyBeide;
-
-            // Aktivierung basierend auf Getting Ready Status
             GettingReadyErCheckBox.IsEnabled = project.GettingReady;
             GettingReadySieCheckBox.IsEnabled = project.GettingReady;
             GettingReadyBeideCheckBox.IsEnabled = project.GettingReady;
 
-            // Status setzen
             if (!string.IsNullOrEmpty(project.Status))
             {
                 StatusPicker.SelectedItem = project.Status;
             }
 
-            // Buchungsdaten setzen
             BookingDateEntry.Text = project.Booking?.ToString("dd.MM.yyyy") ?? "";
             if (project.BookingTime != TimeSpan.Zero)
             {
@@ -445,8 +433,6 @@ namespace PixFrameWorkspace
                 BookingTimeEntry.Text = "";
             }
             LocationEntry.Text = project.Location;
-
-            // Notizen setzen
             NotesEditor.Text = project.Notes ?? "";
         }
 
@@ -471,6 +457,329 @@ namespace PixFrameWorkspace
                 GettingReadyErCheckBox.IsChecked = false;
                 GettingReadySieCheckBox.IsChecked = false;
                 GettingReadyBeideCheckBox.IsChecked = false;
+            }
+        }
+
+        private async void OnBookingDatePickerClicked(object sender, EventArgs e)
+        {
+            try
+            {
+                var selectedDate = await DisplayPromptAsync(
+                    "Buchungsdatum auswählen",
+                    "Bitte geben Sie das Datum ein (dd.MM.yyyy):",
+                    initialValue: BookingDateEntry.Text,
+                    maxLength: 10,
+                    keyboard: Keyboard.Text);
+
+                if (!string.IsNullOrEmpty(selectedDate))
+                {
+                    if (DateTime.TryParse(selectedDate, out DateTime date))
+                    {
+                        BookingDateEntry.Text = date.ToString("dd.MM.yyyy");
+                    }
+                    else
+                    {
+                        await DisplayAlert("Fehler", "Ungültiges Datumsformat. Bitte verwenden Sie dd.MM.yyyy", "OK");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                await DisplayAlert("Fehler", $"Fehler beim Auswählen des Datums: {ex.Message}", "OK");
+            }
+        }
+
+        private async void OnBookingTimePickerClicked(object sender, EventArgs e)
+        {
+            try
+            {
+                var selectedTime = await DisplayPromptAsync(
+                    "Uhrzeit auswählen",
+                    "Bitte geben Sie die Uhrzeit ein (HH:mm):",
+                    initialValue: BookingTimeEntry.Text,
+                    maxLength: 5,
+                    keyboard: Keyboard.Text);
+
+                if (!string.IsNullOrEmpty(selectedTime))
+                {
+                    if (TimeSpan.TryParse(selectedTime, out TimeSpan time))
+                    {
+                        BookingTimeEntry.Text = time.ToString(@"hh\:mm");
+                    }
+                    else
+                    {
+                        await DisplayAlert("Fehler", "Ungültiges Zeitformat. Bitte verwenden Sie HH:mm", "OK");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                await DisplayAlert("Fehler", $"Fehler beim Auswählen der Zeit: {ex.Message}", "OK");
+            }
+        }
+
+        private async void OnSaveButtonClicked(object sender, EventArgs e)
+        {
+            try
+            {
+                // Validiere Pflichtfelder
+                if (string.IsNullOrWhiteSpace(GeneratedProjectNameLabel.Text))
+                {
+                    await DisplayAlert("Fehler", "Der Projektname ist leer.", "OK");
+                    return;
+                }
+
+                var project = new Project
+                {
+                    ProjectName = GeneratedProjectNameLabel.Text,
+                    Category = CategoryPicker.SelectedItem as string,
+                    Status = StatusPicker.SelectedItem as string ?? "Aktiv",
+                    Location = LocationEntry.Text,
+                    Notes = NotesEditor.Text,
+                    GettingReady = GettingReadyCheckBox.IsChecked,
+                    GettingReadyEr = GettingReadyErCheckBox.IsChecked,
+                    GettingReadySie = GettingReadySieCheckBox.IsChecked,
+                    GettingReadyBeide = GettingReadyBeideCheckBox.IsChecked,
+                    Fotografie = FotografieCheckBox.IsChecked,
+                    Videografie = VideografieCheckBox.IsChecked,
+                    Glueckwunschkarten = GlueckwunschkartenCheckBox.IsChecked,
+                    CreatedDate = DateTime.Now
+                };
+
+                // Kundenzuweisung, sofern vorhanden
+                if (_currentCustomer != null)
+                {
+                    project.CustomerNumber = _currentCustomer.CustomerNumber;
+                }
+                else
+                {
+                    await DisplayAlert("Fehler", "Kein Kunde zugeordnet.", "OK");
+                    return;
+                }
+
+                if (!string.IsNullOrEmpty(BookingDateEntry.Text))
+                {
+                    if (DateTime.TryParse(BookingDateEntry.Text, out DateTime bookingDate))
+                    {
+                        project.Booking = bookingDate;
+                    }
+                }
+                if (!string.IsNullOrEmpty(BookingTimeEntry.Text))
+                {
+                    if (TimeSpan.TryParse(BookingTimeEntry.Text, out TimeSpan bookingTime))
+                    {
+                        project.BookingTime = bookingTime;
+                    }
+                }
+
+                // Neue ID, falls es ein neues Projekt ist
+                if (_selectedProject == null)
+                {
+                    project.ProjectId = await _projectRepo.GetNextProjectIdAsync().ConfigureAwait(false);
+
+                    if (_currentCustomer != null)
+                        project.ProjectFolderPath = _projectRepo.CreateProjectFolder(_currentCustomer, project);
+
+                    await _projectRepo.AddOrUpdateProjectAsync(project).ConfigureAwait(false);
+
+                    await Dispatcher.DispatchAsync(() =>
+                    {
+                        _allProjects.Add(project);
+                        FilterProjectsByCustomer();
+                        StatusLabel.Text = $"Projekt {project.ProjectName} erstellt";
+                    });
+
+                    await DisplayAlert("Erfolg", "Projekt erfolgreich erstellt.", "OK");
+                }
+                else
+                {
+                    project.ProjectId = _selectedProject.ProjectId;
+                    project.CustomerNumber = _selectedProject.CustomerNumber;
+                    project.CreatedDate = _selectedProject.CreatedDate;
+                    project.ProjectFolderPath = _selectedProject.ProjectFolderPath;
+
+                    await _projectRepo.AddOrUpdateProjectAsync(project).ConfigureAwait(false);
+
+                    await Dispatcher.DispatchAsync(() =>
+                    {
+                        var index = _allProjects.FindIndex(p => p.ProjectId == project.ProjectId);
+                        if (index != -1)
+                        {
+                            _allProjects[index] = project;
+                        }
+                        FilterProjectsByCustomer();
+                        StatusLabel.Text = $"Projekt {project.ProjectName} aktualisiert";
+                    });
+
+                    await DisplayAlert("Erfolg", "Projekt erfolgreich aktualisiert.", "OK");
+                }
+            }
+            catch (Exception ex)
+            {
+                await DisplayAlert("Fehler", $"Fehler beim Speichern: {ex.Message}", "OK");
+            }
+        }
+
+        private void OnClearButtonClicked(object sender, EventArgs e)
+        {
+            _selectedProject = null;
+            ProjectIdLabel.Text = "";
+            GeneratedProjectNameLabel.Text = "";
+            CategoryPicker.SelectedIndex = -1;
+            StatusPicker.SelectedIndex = -1;
+
+            FotografieCheckBox.IsChecked = false;
+            VideografieCheckBox.IsChecked = false;
+            GlueckwunschkartenCheckBox.IsChecked = false;
+            GettingReadyCheckBox.IsChecked = false;
+
+            // Getting Ready Optionen zurücksetzen und deaktivieren
+            GettingReadyErCheckBox.IsChecked = false;
+            GettingReadySieCheckBox.IsChecked = false;
+            GettingReadyBeideCheckBox.IsChecked = false;
+            GettingReadyErCheckBox.IsEnabled = false;
+            GettingReadySieCheckBox.IsEnabled = false;
+            GettingReadyBeideCheckBox.IsEnabled = false;
+
+            // Formularfelder leeren
+            BookingDateEntry.Text = "";
+            BookingTimeEntry.Text = "";
+            LocationEntry.Text = "";
+            NotesEditor.Text = "";
+
+            // Tools Dropdown zurücksetzen
+            ToolsPicker.SelectedIndex = -1;
+            StartToolButton.IsEnabled = false;
+
+            // Selection in ListView zurücksetzen
+            ProjectsListView.SelectedItem = null;
+            OpenFolderButton.IsEnabled = false;
+
+            StatusLabel.Text = "Bereit für neues Projekt";
+        }
+
+        private async void OnOpenProjectFolderClicked(object sender, EventArgs e)
+        {
+            if (_currentCustomer == null)
+            {
+                await DisplayAlert("Info", "Kein Kunde ausgewählt.", "OK");
+                return;
+            }
+
+            try
+            {
+                StatusLabel.Text = "Öffne Kunden-Ordner...";
+                var success = await _customerManager.OpenCustomerFolderAsync(_currentCustomer).ConfigureAwait(false);
+
+                if (success)
+                {
+                    StatusLabel.Text = $"Ordner für {_currentCustomer.DisplayName} geöffnet";
+                }
+                else
+                {
+                    await DisplayAlert("Fehler", "Ordner konnte nicht geöffnet werden.", "OK");
+                    StatusLabel.Text = "Fehler beim Öffnen des Ordners";
+                }
+            }
+            catch (Exception ex)
+            {
+                await DisplayAlert("Fehler", $"Fehler beim Öffnen des Ordners: {ex.Message}", "OK");
+                StatusLabel.Text = "Fehler beim Öffnen des Ordners";
+            }
+        }
+
+        private async void OnBackButtonClicked(object sender, EventArgs e)
+        {
+            await Navigation.PopAsync();
+        }
+
+        private async void OnAddImageClicked(object sender, EventArgs e)
+        {
+            try
+            {
+                var fileResult = await FilePicker.Default.PickAsync(new PickOptions
+                {
+                    PickerTitle = "Bild auswählen",
+                    FileTypes = FilePickerFileType.Images
+                });
+
+                if (fileResult != null)
+                {
+                    await DisplayAlert("Erfolg", $"Bild ausgewählt: {fileResult.FileName}", "OK");
+                    // Hier ggf. weitere Verarbeitung (z. B. Bild dem Projekt zuordnen etc.)
+                }
+            }
+            catch (Exception ex)
+            {
+                await DisplayAlert("Fehler", $"Fehler beim Auswählen des Bildes: {ex.Message}", "OK");
+            }
+        }
+
+        private async void OnAddVideoClicked(object sender, EventArgs e)
+        {
+            try
+            {
+                var fileResult = await FilePicker.Default.PickAsync(new PickOptions
+                {
+                    PickerTitle = "Video auswählen",
+                    FileTypes = FilePickerFileType.Videos
+                });
+
+                if (fileResult != null)
+                {
+                    await DisplayAlert("Erfolg", $"Video ausgewählt: {fileResult.FileName}", "OK");
+                    // Hier ggf. weitere Verarbeitung (z. B. dem Projekt zufügen)
+                }
+            }
+            catch (Exception ex)
+            {
+                await DisplayAlert("Fehler", $"Fehler beim Auswählen des Videos: {ex.Message}", "OK");
+            }
+        }
+
+        private async void OnAddContractClicked(object sender, EventArgs e)
+        {
+            try
+            {
+                var fileResult = await FilePicker.Default.PickAsync(new PickOptions
+                {
+                    PickerTitle = "Vertrag auswählen",
+                    // FileTypes anpassen, falls spezielle Dateitypen gewünscht sind
+                    FileTypes = FilePickerFileType.Pdf // oder: FilePickerFileType.All
+                });
+
+                if (fileResult != null)
+                {
+                    await DisplayAlert("Erfolg", $"Vertrag ausgewählt: {fileResult.FileName}", "OK");
+                    // Hier ggf. weitere Verarbeitung (z. B. Dokument dem Projekt/Kunden zuordnen)
+                }
+            }
+            catch (Exception ex)
+            {
+                await DisplayAlert("Fehler", $"Fehler beim Auswählen des Vertrags: {ex.Message}", "OK");
+            }
+        }
+
+        private async void OnAddInvoiceClicked(object sender, EventArgs e)
+        {
+            try
+            {
+                var fileResult = await FilePicker.Default.PickAsync(new PickOptions
+                {
+                    PickerTitle = "Rechnung auswählen",
+                    // FileTypes ggf. anpassen – z. B. PDF, Excel, Bilder oder alle
+                    FileTypes = FilePickerFileType.Pdf // Oder: FilePickerFileType.All
+                });
+
+                if (fileResult != null)
+                {
+                    await DisplayAlert("Erfolg", $"Rechnung ausgewählt: {fileResult.FileName}", "OK");
+                    // Hier ggf. weitere Verarbeitung (z. B. Rechnung Projekt zuordnen)
+                }
+            }
+            catch (Exception ex)
+            {
+                await DisplayAlert("Fehler", $"Fehler beim Auswählen der Rechnung: {ex.Message}", "OK");
             }
         }
 
