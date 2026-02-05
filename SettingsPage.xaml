@@ -4,67 +4,82 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              Title="Einstellungen">
 
-    <ScrollView>
-        <VerticalStackLayout Spacing="20" Padding="20">
+	<ScrollView>
+		<VerticalStackLayout Spacing="20" Padding="20">
 
-            <!-- Header -->
-            <Label Text="Einstellungen" 
-                   FontSize="24" 
-                   FontAttributes="Bold" 
-                   HorizontalOptions="Center" 
-                   TextColor="#2C3E50" />
+			<!-- Header mit Zurück-Button -->
+			<Grid ColumnDefinitions="*,Auto" ColumnSpacing="10" VerticalOptions="Start">
+				<Label Text="Einstellungen"
+                       FontSize="24"
+                       FontAttributes="Bold"
+                       HorizontalOptions="Start"
+                       TextColor="#2C3E50"
+                       Grid.Column="0"
+                       VerticalOptions="Center" />
 
-            <!-- STATISTIKEN -->
-            <Frame BackgroundColor="#F8F9FA" Padding="15" HasShadow="False">
-                <VerticalStackLayout Spacing="12">
-                    <Label Text="Statistiken" 
-               FontSize="18" 
-               FontAttributes="Bold" 
+				<Button Grid.Column="1"
+                        Text="← Zurück"
+                        Clicked="OnBackButtonClicked"
+                        BackgroundColor="#E74C3C"
+                        TextColor="White"
+                        FontSize="12"
+                        HeightRequest="40"
+                        MinimumWidthRequest="100"
+                        Padding="10,0"
+                        VerticalOptions="Center" />
+			</Grid>
+
+			<!-- STATISTIKEN -->
+			<Frame BackgroundColor="#F8F9FA" Padding="15" HasShadow="False">
+				<VerticalStackLayout Spacing="12">
+					<Label Text="Statistiken"
+               FontSize="18"
+               FontAttributes="Bold"
                TextColor="#2C3E50" />
 
-                    <!-- Grundlegende Statistiken -->
-                    <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="15" RowSpacing="10">
-                        <!-- Zeile 1 -->
-                        <VerticalStackLayout Grid.Row="0" Grid.Column="0" Spacing="2">
-                            <Label Text="Anzahl Kunden:" FontSize="12" FontAttributes="Bold" />
-                            <Label x:Name="CustomerCountLabel" Text="0" FontSize="14" TextColor="#2C3E50" />
-                        </VerticalStackLayout>
+					<!-- Grundlegende Statistiken -->
+					<Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="15" RowSpacing="10">
+						<!-- Zeile 1 -->
+						<VerticalStackLayout Grid.Row="0" Grid.Column="0" Spacing="2">
+							<Label Text="Anzahl Kunden:" FontSize="12" FontAttributes="Bold" />
+							<Label x:Name="CustomerCountLabel" Text="0" FontSize="14" TextColor="#2C3E50" />
+						</VerticalStackLayout>
 
-                        <VerticalStackLayout Grid.Row="0" Grid.Column="1" Spacing="2">
-                            <Label Text="Nächste Kundennummer:" FontSize="12" FontAttributes="Bold" />
-                            <Label x:Name="NextCustomerNumberLabel" Text="0" FontSize="14" TextColor="#2C3E50" />
-                        </VerticalStackLayout>
+						<VerticalStackLayout Grid.Row="0" Grid.Column="1" Spacing="2">
+							<Label Text="Nächste Kundennummer:" FontSize="12" FontAttributes="Bold" />
+							<Label x:Name="NextCustomerNumberLabel" Text="0" FontSize="14" TextColor="#2C3E50" />
+						</VerticalStackLayout>
 
-                        <!-- Zeile 2 - Dateigrößen -->
-                        <VerticalStackLayout Grid.Row="1" Grid.Column="0" Spacing="2">
-                            <Label Text="Datenbank-Größe:" FontSize="12" FontAttributes="Bold" />
-                            <Label x:Name="DatabaseSizeLabel" Text="0 B" FontSize="14" TextColor="#2C3E50" />
-                        </VerticalStackLayout>
+						<!-- Zeile 2 - Dateigrößen -->
+						<VerticalStackLayout Grid.Row="1" Grid.Column="0" Spacing="2">
+							<Label Text="Datenbank-Größe:" FontSize="12" FontAttributes="Bold" />
+							<Label x:Name="DatabaseSizeLabel" Text="0 B" FontSize="14" TextColor="#2C3E50" />
+						</VerticalStackLayout>
 
-                        <VerticalStackLayout Grid.Row="1" Grid.Column="1" Spacing="2">
-                            <Label Text="Gesamtanzahl Projekte:" FontSize="12" FontAttributes="Bold" />
-                            <Label x:Name="ProjectCountLabel" Text="0" FontSize="14" TextColor="#2C3E50" />
-                        </VerticalStackLayout>
+						<VerticalStackLayout Grid.Row="1" Grid.Column="1" Spacing="2">
+							<Label Text="Gesamtanzahl Projekte:" FontSize="12" FontAttributes="Bold" />
+							<Label x:Name="ProjectCountLabel" Text="0" FontSize="14" TextColor="#2C3E50" />
+						</VerticalStackLayout>
 
-                        <!-- Zeile 3 - Ordner-Größe über beide Spalten -->
-                        <VerticalStackLayout Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2" Spacing="2">
-                            <Label Text="Größe Medien (Fotos, Videos und Dokumente):" FontSize="12" FontAttributes="Bold" />
-                            <Label x:Name="MediaSizeLabel" Text="0 B" FontSize="14" TextColor="#2C3E50" />
-                        </VerticalStackLayout>
-                    </Grid>
+						<!-- Zeile 3 - Ordner-Größe über beide Spalten -->
+						<VerticalStackLayout Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2" Spacing="2">
+							<Label Text="Größe Medien (Fotos, Videos und Dokumente):" FontSize="12" FontAttributes="Bold" />
+							<Label x:Name="MediaSizeLabel" Text="0 B" FontSize="14" TextColor="#2C3E50" />
+						</VerticalStackLayout>
+					</Grid>
 
-                    <!-- Vollständiger Pfad mit Ordner-Button -->
-                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10" VerticalOptions="Center">
-                        <Label x:Name="DatabasePathLabel" 
-                            Text="Pfad wird geladen..." 
-                            FontSize="11" 
-                            TextColor="Gray" 
+					<!-- Vollständiger Pfad mit Ordner-Button -->
+					<Grid ColumnDefinitions="*,Auto" ColumnSpacing="10" VerticalOptions="Center">
+						<Label x:Name="DatabasePathLabel"
+                            Text="Pfad wird geladen..."
+                            FontSize="11"
+                            TextColor="Gray"
                             LineBreakMode="TailTruncation"
                             VerticalOptions="Center"
                             Grid.Column="0" />
 
-                        <Button Grid.Column="1"
-                            Text="📁 Öffnen" 
+						<Button Grid.Column="1"
+                            Text="📁 Öffnen"
                             Clicked="OnOpenDatabaseFolderButtonClicked"
                             BackgroundColor="#3498DB"
                             TextColor="White"
@@ -74,151 +89,151 @@
                             Padding="10,0"
                             Margin="5,0,0,0"
                             VerticalOptions="Center" />
-                    </Grid>
+					</Grid>
 
-                </VerticalStackLayout>
-            </Frame>
+				</VerticalStackLayout>
+			</Frame>
 
-            <!-- EXTERNE TOOLS KONFIGURATION -->
-            <Frame BackgroundColor="#F0F8FF" Padding="15" HasShadow="False">
-                <VerticalStackLayout Spacing="12">
-                    <Label Text="Externe Tools" 
-                           FontSize="18" 
-                           FontAttributes="Bold" 
+			<!-- EXTERNE TOOLS KONFIGURATION -->
+			<Frame BackgroundColor="#F0F8FF" Padding="15" HasShadow="False">
+				<VerticalStackLayout Spacing="12">
+					<Label Text="Externe Tools"
+                           FontSize="18"
+                           FontAttributes="Bold"
                            TextColor="#2C3E50" />
 
-                    <Label Text="Wählen Sie die Tools aus, die Sie schnell starten möchten:" 
-                           FontSize="12" 
+					<Label Text="Wählen Sie die Tools aus, die Sie schnell starten möchten:"
+                           FontSize="12"
                            TextColor="Gray" />
 
-                    <!-- Foto Bearbeitung -->
-                    <VerticalStackLayout Spacing="8">
-                        <Label Text="Foto Bearbeitung" FontSize="14" FontAttributes="Bold" />
+					<!-- Foto Bearbeitung -->
+					<VerticalStackLayout Spacing="8">
+						<Label Text="Foto Bearbeitung" FontSize="14" FontAttributes="Bold" />
 
-                        <!-- Zeile 1 -->
-                        <Grid ColumnDefinitions="*,*" ColumnSpacing="15">
-                            <!-- Links -->
-                            <HorizontalStackLayout Grid.Column="0" Spacing="10">
-                                <CheckBox x:Name="PhotoshopCheckBox" VerticalOptions="Center" />
-                                <Label Text="Adobe Photoshop" FontSize="12" VerticalOptions="Center" />
-                            </HorizontalStackLayout>
+						<!-- Zeile 1 -->
+						<Grid ColumnDefinitions="*,*" ColumnSpacing="15">
+							<!-- Links -->
+							<HorizontalStackLayout Grid.Column="0" Spacing="10">
+								<CheckBox x:Name="PhotoshopCheckBox" VerticalOptions="Center" />
+								<Label Text="Adobe Photoshop" FontSize="12" VerticalOptions="Center" />
+							</HorizontalStackLayout>
 
-                            <!-- Rechts -->
-                            <HorizontalStackLayout Grid.Column="1" Spacing="10">
-                                <CheckBox x:Name="LightroomCheckBox" VerticalOptions="Center" />
-                                <Label Text="Adobe Lightroom" FontSize="12" VerticalOptions="Center" />
-                            </HorizontalStackLayout>
-                        </Grid>
+							<!-- Rechts -->
+							<HorizontalStackLayout Grid.Column="1" Spacing="10">
+								<CheckBox x:Name="LightroomCheckBox" VerticalOptions="Center" />
+								<Label Text="Adobe Lightroom" FontSize="12" VerticalOptions="Center" />
+							</HorizontalStackLayout>
+						</Grid>
 
-                        <!-- Zeile 2 -->
-                        <Grid ColumnDefinitions="*,*" ColumnSpacing="15">
-                            <!-- Links -->
-                            <HorizontalStackLayout Grid.Column="0" Spacing="10">
-                                <CheckBox x:Name="GimpCheckBox" VerticalOptions="Center" />
-                                <Label Text="GIMP" FontSize="12" VerticalOptions="Center" />
-                            </HorizontalStackLayout>
+						<!-- Zeile 2 -->
+						<Grid ColumnDefinitions="*,*" ColumnSpacing="15">
+							<!-- Links -->
+							<HorizontalStackLayout Grid.Column="0" Spacing="10">
+								<CheckBox x:Name="GimpCheckBox" VerticalOptions="Center" />
+								<Label Text="GIMP" FontSize="12" VerticalOptions="Center" />
+							</HorizontalStackLayout>
 
-                            <!-- Rechts -->
-                            <HorizontalStackLayout Grid.Column="1" Spacing="10">
-                                <CheckBox x:Name="AffinityPhotoCheckBox" VerticalOptions="Center" />
-                                <Label Text="Affinity Photo" FontSize="12" VerticalOptions="Center" />
-                            </HorizontalStackLayout>
-                        </Grid>
-                    </VerticalStackLayout>
+							<!-- Rechts -->
+							<HorizontalStackLayout Grid.Column="1" Spacing="10">
+								<CheckBox x:Name="AffinityPhotoCheckBox" VerticalOptions="Center" />
+								<Label Text="Affinity Photo" FontSize="12" VerticalOptions="Center" />
+							</HorizontalStackLayout>
+						</Grid>
+					</VerticalStackLayout>
 
-                    <!-- Video Bearbeitung -->
-                    <VerticalStackLayout Spacing="8">
-                        <Label Text="Video Bearbeitung" FontSize="14" FontAttributes="Bold" />
+					<!-- Video Bearbeitung -->
+					<VerticalStackLayout Spacing="8">
+						<Label Text="Video Bearbeitung" FontSize="14" FontAttributes="Bold" />
 
-                        <!-- Zeile 1 -->
-                        <Grid ColumnDefinitions="*,*" ColumnSpacing="15">
-                            <!-- Links -->
-                            <HorizontalStackLayout Grid.Column="0" Spacing="10">
-                                <CheckBox x:Name="DavinciResolveCheckBox" VerticalOptions="Center" />
-                                <Label Text="DaVinci Resolve" FontSize="12" VerticalOptions="Center" />
-                            </HorizontalStackLayout>
+						<!-- Zeile 1 -->
+						<Grid ColumnDefinitions="*,*" ColumnSpacing="15">
+							<!-- Links -->
+							<HorizontalStackLayout Grid.Column="0" Spacing="10">
+								<CheckBox x:Name="DavinciResolveCheckBox" VerticalOptions="Center" />
+								<Label Text="DaVinci Resolve" FontSize="12" VerticalOptions="Center" />
+							</HorizontalStackLayout>
 
-                            <!-- Rechts -->
-                            <HorizontalStackLayout Grid.Column="1" Spacing="10">
-                                <CheckBox x:Name="IMovieCheckBox" VerticalOptions="Center" />
-                                <Label Text="iMovie" FontSize="12" VerticalOptions="Center" />
-                            </HorizontalStackLayout>
-                        </Grid>
+							<!-- Rechts -->
+							<HorizontalStackLayout Grid.Column="1" Spacing="10">
+								<CheckBox x:Name="IMovieCheckBox" VerticalOptions="Center" />
+								<Label Text="iMovie" FontSize="12" VerticalOptions="Center" />
+							</HorizontalStackLayout>
+						</Grid>
 
-                        <!-- Zeile 2 -->
-                        <Grid ColumnDefinitions="*,*" ColumnSpacing="15">
-                            <!-- Links -->
-                            <HorizontalStackLayout Grid.Column="0" Spacing="10">
-                                <CheckBox x:Name="PremiereProCheckBox" VerticalOptions="Center" />
-                                <Label Text="Adobe Premiere Pro" FontSize="12" VerticalOptions="Center" />
-                            </HorizontalStackLayout>
+						<!-- Zeile 2 -->
+						<Grid ColumnDefinitions="*,*" ColumnSpacing="15">
+							<!-- Links -->
+							<HorizontalStackLayout Grid.Column="0" Spacing="10">
+								<CheckBox x:Name="PremiereProCheckBox" VerticalOptions="Center" />
+								<Label Text="Adobe Premiere Pro" FontSize="12" VerticalOptions="Center" />
+							</HorizontalStackLayout>
 
-                            <!-- Rechts -->
-                            <HorizontalStackLayout Grid.Column="1" Spacing="10">
-                                <CheckBox x:Name="FinalCutProCheckBox" VerticalOptions="Center" />
-                                <Label Text="Final Cut Pro" FontSize="12" VerticalOptions="Center" />
-                            </HorizontalStackLayout>
-                        </Grid>
-                    </VerticalStackLayout>
+							<!-- Rechts -->
+							<HorizontalStackLayout Grid.Column="1" Spacing="10">
+								<CheckBox x:Name="FinalCutProCheckBox" VerticalOptions="Center" />
+								<Label Text="Final Cut Pro" FontSize="12" VerticalOptions="Center" />
+							</HorizontalStackLayout>
+						</Grid>
+					</VerticalStackLayout>
 
-                    <!-- Weitere Tools -->
-                    <VerticalStackLayout Spacing="8">
-                        <Label Text="Weitere Tools" FontSize="14" FontAttributes="Bold" />
+					<!-- Weitere Tools -->
+					<VerticalStackLayout Spacing="8">
+						<Label Text="Weitere Tools" FontSize="14" FontAttributes="Bold" />
 
-                        <!-- Zeile 1 -->
-                        <Grid ColumnDefinitions="*,*" ColumnSpacing="15">
-                            <!-- Links -->
-                            <HorizontalStackLayout Grid.Column="0" Spacing="10">
-                                <CheckBox x:Name="CaptureOneCheckBox" VerticalOptions="Center" />
-                                <Label Text="Capture One" FontSize="12" VerticalOptions="Center" />
-                            </HorizontalStackLayout>
+						<!-- Zeile 1 -->
+						<Grid ColumnDefinitions="*,*" ColumnSpacing="15">
+							<!-- Links -->
+							<HorizontalStackLayout Grid.Column="0" Spacing="10">
+								<CheckBox x:Name="CaptureOneCheckBox" VerticalOptions="Center" />
+								<Label Text="Capture One" FontSize="12" VerticalOptions="Center" />
+							</HorizontalStackLayout>
 
-                            <!-- Rechts -->
-                            <HorizontalStackLayout Grid.Column="1" Spacing="10">
-                                <CheckBox x:Name="CamerabagCheckBox" VerticalOptions="Center" />
-                                <Label Text="Camerabag Photo" FontSize="12" VerticalOptions="Center" />
-                            </HorizontalStackLayout>
-                        </Grid>
-                    </VerticalStackLayout>
+							<!-- Rechts -->
+							<HorizontalStackLayout Grid.Column="1" Spacing="10">
+								<CheckBox x:Name="CamerabagCheckBox" VerticalOptions="Center" />
+								<Label Text="Camerabag Photo" FontSize="12" VerticalOptions="Center" />
+							</HorizontalStackLayout>
+						</Grid>
+					</VerticalStackLayout>
 
-                    <Button x:Name="SaveToolsButton" 
-                            Text="Tools speichern" 
+					<Button x:Name="SaveToolsButton"
+                            Text="Tools speichern"
                             Clicked="OnSaveToolsButtonClicked"
                             BackgroundColor="#3498DB"
                             TextColor="White"
                             HeightRequest="40" />
 
-                </VerticalStackLayout>
-            </Frame>
+				</VerticalStackLayout>
+			</Frame>
 
-            <!-- ERWEITERTE SPEICHEROPTIONEN -->
-            <Frame BackgroundColor="#F0F8FF" Padding="15" HasShadow="False">
-                <VerticalStackLayout Spacing="12">
-                    <Label Text="Erweiterte Speicheroptionen" 
-                           FontSize="18" 
-                           FontAttributes="Bold" 
+			<!-- ERWEITERTE SPEICHEROPTIONEN -->
+			<Frame BackgroundColor="#F0F8FF" Padding="15" HasShadow="False">
+				<VerticalStackLayout Spacing="12">
+					<Label Text="Erweiterte Speicheroptionen"
+                           FontSize="18"
+                           FontAttributes="Bold"
                            TextColor="#2C3E50" />
 
-                    <!-- Export als JSON -->
-                    <Button x:Name="ExportJsonButton" 
-                            Text="Als JSON exportieren" 
+					<!-- Export als JSON -->
+					<Button x:Name="ExportJsonButton"
+                            Text="Als JSON exportieren"
                             Clicked="OnExportJsonButtonClicked"
                             BackgroundColor="#8E44AD"
                             TextColor="White"
                             HeightRequest="40" />
 
-                    <!-- Import aus JSON -->
-                    <Button x:Name="ImportJsonButton" 
-                            Text="Aus JSON importieren" 
+					<!-- Import aus JSON -->
+					<Button x:Name="ImportJsonButton"
+                            Text="Aus JSON importieren"
                             Clicked="OnImportJsonButtonClicked"
                             BackgroundColor="#9B59B6"
                             TextColor="White"
                             HeightRequest="40" />
-                    
-                </VerticalStackLayout>
-            </Frame>
 
-        </VerticalStackLayout>
-    </ScrollView>
+				</VerticalStackLayout>
+			</Frame>
+
+		</VerticalStackLayout>
+	</ScrollView>
 
 </ContentPage>

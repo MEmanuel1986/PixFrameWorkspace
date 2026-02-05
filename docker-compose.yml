@@ -1,0 +1,28 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: pixframe_postgres
+    environment:
+      POSTGRES_USER: pixframe_user
+      POSTGRES_PASSWORD: PixFrame@2026Secure
+      POSTGRES_DB: pixframe_workspace
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - pixframe_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pixframe_user -d pixframe_workspace"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  pixframe_network:
+    driver: bridge

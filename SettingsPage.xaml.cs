@@ -46,6 +46,13 @@ namespace PixFrameWorkspace
             _ = LoadStatisticsAsync();
         }
 
+        #region NAVIGATION
+        private async void OnBackButtonClicked(object sender, EventArgs e)
+        {
+            await Navigation.PopAsync();
+        }
+        #endregion
+
         #region STATISTIKEN
         private async Task LoadStatisticsAsync()
         {
