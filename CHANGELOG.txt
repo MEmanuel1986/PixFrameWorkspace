@@ -1,0 +1,336 @@
+PixFrameWorkspace — Vollständiges Changelog
+Entwicklungsbeginn: 06. März 2026
+
+---
+
+v1.1.0 — SQLite-Migration, Electron-Shell, Artikel-Seed-System
+26. März 2026
+
+Datenbank: JSON → SQLite
+- Gesamte Datenhaltung von JSON-Dateien auf SQLite (better-sqlite3) migriert
+- 15-Tabellen-Schema mit WAL-Mode, Foreign Keys, Indizes
+- Einmalige JSON→SQLite Migration beim ersten Start (transaktional, mit Rollback-Schutz)
+- JSON-Originaldaten werden automatisch nach data/_migrated_json/ archiviert
+- BaseRepository: Generische CRUD-Basis mit camelCase↔snake_case Konvertierung, Prepared-Statement-Cache, Spalten-Whitelist
+- Alle 9 Services (Customer, Article, Supplier, Project, Document, FiBu, Settings, Counter, Backup) auf SQLite umgestellt
+- Controller und Routes bleiben komplett unverändert (gleiche API)
+
+Standardartikel-System
+- 17 Standardartikel werden beim DB-Init automatisch angelegt (Seed-System)
+- Standardartikel sind löschgeschützt (PROTECTED_ARTICLE_IDS)
+- Artikelpreise synchronisieren sich automatisch mit Einstellungen (bookingTerms)
+- ARTICLE_RATE_MAP: Zentrale Kopplung Artikel-ID → Settings-Feld
+- Kilometergutschtift (art-km-minus) wird automatisch als negativer Wert der Pauschale gesetzt
+- Manuell angelegte Artikel bleiben unberührt
+
+Electron Desktop-App
+- Vue-Frontend + Express-Backend in Electron-Shell gekapselt
+- Dev-Modus: Electron öffnet nur ein Fenster (kein Native-Module-Konflikt)
+- Prod-Modus: Express läuft im Electron-Prozess, Vue-Build wird ausgeliefert
+- Frei wählbarer Workspace-Ordner beim ersten Start (kein AppData-Zwang)
+- Workspace-Konfiguration persistent in Electron userData
+- IPC-Bridge für Workspace-Wechsel, App-Version, Native-Ordner-Öffnung
+- Graceful Shutdown: HTTP-Server + DB sauber schließen
+
+Backup-System
+- SQLite-Backup via VACUUM INTO (konsistente Kopie ohne Sperren)
+- Restore unterstützt v1 (JSON) und v2 (SQLite) Formate
+- Auto-Backup beim Serverstart
+
+PDF-Service
+- Puppeteer wird lazy geladen (try/catch statt Top-Level require)
+- Server startet auch ohne Puppeteer — PDF-Export gibt klaren Fehler zurück
+- Puppeteer als optionalDependency statt harter Abhängigkeit
+
+Bereinigung
+- multer Dependency entfernt (wurde nie verwendet)
+- src/models/ und src/storage/fileStorage.js als Altlasten markiert (Cleanup-Script beiliegend)
+- paths.js Workspace-aware: PIXFRAME_WORKSPACE Env-Variable steuert Datenpfade
+- vite.config.js: base: './' für relative Asset-Pfade in Electron
+
+Install-Scripts
+- Windows: BAT + PowerShell mit better-sqlite3 Build-Tool-Prüfung
+- Mac: Bash mit Xcode CLI Tools Check
+- Cleanup-Scripts für Altlasten-Bereinigung (Windows + Mac)
+
+Bekannte Einschränkungen
+- holidayController schreibt noch direkt in JSON-Cache-Dateien (niedrige Priorität)
+- PDF-Export nutzt noch Puppeteer (wird durch Electron Print API ersetzt)
+- Node.js v22 LTS empfohlen (v24 hat keine better-sqlite3 Prebuilds)
+
+---
+
+v1.0.0-beta.2 — Kopf-/Fußzeile, Firmendaten, Nutzungsrechts-Referenz
+25. März 2026
+
+- Kopfzeile: Logo erscheint auf jeder Folgeseite (position:fixed, oben rechts) — alle 9 Druckansichten
+- Fußzeile: 3-spaltig vereinheitlicht — Spalte 1: Name/Adresse/Website/E-Mail · Spalte 2: Bank/IBAN/BIC · Spalte 3: Steuernummer/Kleinunternehmer
+- ContractPrint: fehlender Logo-Header nachgerüstet
+- DsgvoPrint: Bug behoben — Header war in v-else-Zweig eingebettet und wurde nicht gerendert
+- Firmendaten: Victoria Elisabeth Emanuel vorausgefüllt
+- Einstellungen → Vertragswesen: Referenzkarte Einfache Nutzungsrechte mit Zuschlagstabelle ergänzt
+
+---
+
+v1.0.1 — Fix: Druckränder
+24. März 2026
+
+Druckränder aller Druckseiten korrigiert
+- @page { margin: 14mm 18mm 20mm 18mm } und .a4 { padding: 14mm ... 30mm ... } addierten sich — effektive Ränder waren bis zu 28 mm oben und 50 mm unten
+- Fix: @page { margin: 0 } — Seitenränder werden ausschließlich über .a4 padding gesteuert (22 mm oben/unten, 20 mm links/rechts)
+- Gilt für alle 9 Druckseiten: DocumentPrint, ContractPrint, AddendumPrint, AdvPrint, AdvVertragPrint, AgbPrint, BlankContractPrint, DsgvoPrint, EarPrint
+- Browser-Druckbild entspricht jetzt dem Puppeteer-PDF-Export
+
+---
+
+
+v1.0.0-beta.1 — Beta-Release: macOS-Fixes, Logo-Feedback, Dashboard-Version
+23. März 2026
+
+macOS-Kompatibilität (vollständig auditiert)
+- nodemon ^2.0.20 → ^3.1.0 — nodemon 2.x ist mit Node.js 18/20 inkompatibel
+- --exitcrash Flag aus mac/start-backend.sh entfernt (in nodemon 3 nicht mehr vorhanden)
+- yauzl ^2.10.0 explizit in package.json eingetragen — bisher nur transitive Puppeteer-Abhängigkeit, fragil bei Updates
+- headless: 'new' → headless: true in pdfService.js — 'new' ist in Puppeteer 22 deprecated
+- install.sh: Node.js-Mindestversion geprüft (≥ 18), bricht mit klarer Fehlermeldung ab
+- install.sh: chmod +x mac/.sh direkt am Anfang — Skripte sind nach ZIP-Entpacken ohne ausführbare Permissions
+- install.sh: Hinweis auf macOS Gatekeeper und Puppeteer-Chromium-Download (~150 MB)
+- start-all.sh: iTerm2-Unterstützung — erkennt automatisch ob iTerm2 läuft, öffnet dort neue Tabs
+
+Logo-Fehlerhinweis in Einstellungen
+- Beim Start der Einstellungen-Seite wird per HEAD-Request geprüft ob die Logo-Datei erreichbar ist
+- Bei 404 (z.B. nach Neuinstallation ohne uploads-Ordner): roter Hinweis „Logo-Datei nicht gefunden — bitte neu hochladen"
+- settings.json logoUrl wird dabei geleert damit das Formular sauber bleibt
+- Kein stiller Fail mehr — Browser-Broken-Image entfällt
+
+Artikelnummer in Druckansichten
+- item-sku klebt nicht mehr direkt hinter dem Artikelnamen
+- Eigene Zeile darunter: Art.-Nr. ART-00001 in grauer 7pt-Schrift
+- Gilt für alle Angebote und Rechnungen in DocumentPrint.vue
+
+Dashboard — Versionsnummer
+- Neue Versionsleiste am unteren Rand: PixFrameWorkspace · v1.0.0-beta.1 · März 2026
+- Styled als dezenter Footer, monospace Badge
+
+Versionsschema ab jetzt: MAJOR.MINOR.PATCH[-prerelease]
+- 1.0.0-beta.1 = erste öffentlich weitergebbare Beta
+- Nächste stabile Version: 1.0.0 wenn E-Mail-Versand und Electron-Migration abgeschlossen
+
+---
+
+v232 — Vertragsreiter: NR-Daten aus Anfrage, Werbung entfernt
+März 2026
+
+- Chip „Werbung / Marketing" entfernt, nur noch Privatkunde / B2B / Kommerziell
+- usageType initial aus clientIsCompany der Anfrage gesetzt
+- Simple-Modus + designaustria-Modus für Nutzungsrechte
+- NR-Zuschlag Fix (doppelte Berechnung behoben)
+- Privat-Stunden: leistungsaufgeschlüsselt mit Bildpaket
+- Angebot wird mit Anfrage-Positionen vorbefüllt
+- NR-Artikelbeschreibung dynamisch pro Auftrag
+- Bildpaket in Pauschal, Auto-Artikelsync, NR-Artikel ART-00012
+
+---
+
+v221–v231 — Settings-Fixes, Kalkulator-Umstrukturierung
+März 2026
+
+- HTML-Warnings <tr> ohne <tbody> behoben
+- Leistungen nach oben, B2B-Kalkulator leistungsgesteuert
+- Neue Kalkulationsformel für B2B (additiv, nicht multiplikativ)
+- Pauschal-Umbau, Rüstzeiten B2B
+- Zwei NR-Modelle: Simple (MFM-basiert) + designaustria (Faktor-Multiplikation)
+
+---
+
+v219–v220 — Artikelstamm-Neuaufstellung, B2B-Phasenkalkulator
+März 2026
+
+- 9 strukturierte Stammartikel (Foto/Video Stundensätze, km, Bildpreise)
+- 4 Stundensätze in Einstellungen (Privat/B2B je Fotografie/Videografie)
+- B2B-Phasenkalkulator mit Live-Kalkulation im Anfrageformular
+- Rüstzeiten als eigene Artikelkategorie
+
+---
+
+v218 — Settings-Umstrukturierung, Dashboard-Chart, Auftragsübersicht
+März 2026
+
+- Umsatz-Chart vor KPI-Kacheln verschoben
+- Chip-Leiste mit Anfragedetails in Auftragsübersicht
+- Fix: Logo wird in Einstellungen korrekt geladen (Deklarationsreihenfolge)
+
+---
+
+v217 — Hamburger-Bugs + Nutzungsrechts-Kalkulator (designaustria)
+März 2026
+
+- Fix: Hamburger-Menü z-index Korrekturen
+- Nutzungsrechts-Kalkulator nach designaustria-Modell
+- 6 Faktor-Dimensionen mit Hover-Tooltips, Live-Formel-Anzeige
+
+---
+
+v215–v216 — Mehrere Shooting-Termine, Eingangsrechnungen
+März 2026
+
+- BQ-6: Mehrere Shooting-Termine pro Auftrag (Haupt- + Zusatztermine)
+- BQ-7: Externer Rechnungsimport (manuell + PDF-Ablage) im FiBu-Tab
+
+---
+
+v213–v214 — Beta-Qualität BQ-1 bis BQ-5
+März 2026
+
+- BQ-1: FiBu Beleg-Vorschau (Thumbnails, PDF-Icon)
+- BQ-2: Dashboard Umsatz-Chart (letzte 6 Monate)
+- BQ-3: iCal-Export im Kalender (.ics)
+- BQ-4: km-Pauschale aus Einstellungen
+- BQ-5: DATEV CSV-Export
+- Fix: DATEV enthielt nur Soll-Buchungen — Haben-Seite ergänzt
+
+---
+
+v212 — Beta-Blocker BB-1 bis BB-6 behoben
+März 2026
+
+- BB-1: Path Traversal Fix in zipUtils.extractZip()
+- BB-2: Atomare Schreiboperationen (write-tmp + rename)
+- BB-3: {minCopyrightDamage} Placeholder → 300%
+- BB-4: Race Condition in nextNumber() → atomarer Counter (counters.json)
+- BB-5: joi Dependency entfernt
+- BB-6: Settings-Cache + atomares Write
+
+---
+
+v211 — Mac-Audit: CRLF, Script-Bugs, Permissions
+März 2026
+
+- CRLF-Zeilenenden in 6 Quelldateien entfernt
+- cp-Argumente in start-backend.sh korrigiert (.env wurde überschrieben)
+- +x Permissions für mac/.sh dokumentiert
+- FRONTEND_URL in .env ergänzt
+
+---
+
+v208–v210 — Mac-Kompatibilität, plattformunabhängiges ZIP
+März 2026
+
+- zipUtils.js: reines Node.js, kein Shell-Aufruf, kein Binary
+- paths.js: zentrale Pfad-Abstraktion für Windows + macOS
+- Fix: await extractZip() (async/await-Bug)
+- Fix: Angebot standardmäßig ausgeblendet (skipQuote=true)
+
+---
+
+v199–v207 — PDF-Engine, Backup, Update-System
+März 2026
+
+- Puppeteer PDF-Engine (9 Endpunkte)
+- Backup-System (ZIP, 10-Versionen-Rotation)
+- Update-System (ZIP mit Manifest, Auto-Neustart)
+- PDF A4-Fix: Margins, Footer, Seitenzahlen
+- emulateMediaType('print'), grauer Hintergrund behoben
+
+---
+
+v195 — Vollständiger Rechnungs-Workflow (GoBD-konform)
+März 2026
+
+- Korrekturrechnung (KOR-), Stornorechnung (STORNO-)
+- v1/v2/v3-Badges, transitive Dokument-Zuordnung
+- FiBu EAR: Korrekturen summiert, Ersetzte durchgestrichen
+
+---
+
+v184–v194 — Architektur-Refactoring, Pipeline-UX
+März 2026
+
+- 5 Pinia Stores, ProjectDetail in 7 Sub-Komponenten
+- Backend Layered Architecture
+- Pipeline Auto-Open, handlePipelineCall async
+
+---
+
+v173–v183 — DSGVO, FiBu-Modul, Dokumenten-Aktionen
+März 2026
+
+- FiBu: Einnahmen, Ausgaben mit Upload, Fahrtenbuch
+- EAR-Ausdruck als A4-PDF
+- Einheitliches Corporate Design aller Dokumente
+
+---
+
+v93–v172 — Redesign, Leistungs-Features
+März 2026
+
+- Visuelles Redesign (TopBar, Theme-System)
+- Leistungs-Chips (Foto, Video, Getting Ready, Danksagung)
+- DSGVO-Blankoformular, ADV-Vertrag
+
+---
+
+v76–v92 — Kalender, E-Mail-Infrastruktur
+März 2026
+
+- Kalender mit Feiertagen + Schulferien (16 Bundesländer)
+- E-Mail-Infrastruktur (nodemailer, SMTP-Config)
+- Lieferantenverwaltung
+
+---
+
+v51–v75 — Pipeline, AGB, Rechtsdokumente
+März 2026
+
+- 7-Stufen-Pipeline
+- AGB, DSGVO, ADV editierbar
+- DSGVO-Blankoformular
+
+---
+
+v23–v50 — Vertragswesen, Druckansichten
+März 2026
+
+- Vollständiger Fotovertrag (ContractPrint.vue)
+- ADV, Blankovertrag, AGB als Druckseiten
+
+---
+
+v0–v22 — Fundament & Stabilisierung
+06. März 2026
+
+- Vue 3 + Express + JSON-Speicher
+- REST-API, Dokumenten-Workflow, Statusverwaltung
+- Alle Grundbugs behoben (Phase 0)
+
+---
+
+Meilenstein-Übersicht
+
+| Meilenstein | Version | Datum |
+|---|---|---|
+| Erstes Grundgerüst | v0 | 06.03.2026 |
+| Dokumenten-Workflow | v22 | 07.03.2026 |
+| Vertragsgenerator | v50 | 07.03.2026 |
+| Pipeline + Rechtsdokumente | v75 | 08.03.2026 |
+| Kalender + E-Mail | v92 | 09.03.2026 |
+| Redesign | v172 | 14.03.2026 |
+| FiBu + DSGVO | v183 | 15.03.2026 |
+| Architektur-Refactoring | v190 | 15.03.2026 |
+| Rechnungs-Workflow GoBD | v195 | 16.03.2026 |
+| PDF-Engine + API_BASE | v197 | 20.03.2026 |
+| Backup + Update | v199 | 21.03.2026 |
+| PDF A4-Fix | v203 | 21.03.2026 |
+| Mac-Kompatibilität | v208 | 21.03.2026 |
+| Beta-Blocker behoben | v212 | 22.03.2026 |
+| Beta-Qualität abgeschlossen | v215 | 22.03.2026 |
+| B2B-Kalkulator, NR-Modelle | v220 | 23.03.2026 |
+| NR-Fixes, Angebotsprefill | v232 | 23.03.2026 |
+| Beta-Release | v1.0.0-beta.1 | 23.03.2026 |
+| Druckränder-Fix | v1.0.1 | 24.03.2026 |
+| Kopf-/Fußzeile | v1.0.0-beta.2 | 25.03.2026 |
+| SQLite + Electron | v1.1.0 | 26.03.2026 |
+
+---
+
+PixFrameWorkspace · v1.1.0 · März 2026

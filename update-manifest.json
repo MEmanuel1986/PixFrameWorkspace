@@ -1,0 +1,14 @@
+{
+  "version": "1.0.0-beta.2",
+  "title": "Kopf-/Fußzeile, Firmendaten, Nutzungsrechts-Referenz",
+  "date": "2026-03-25",
+  "changes": [
+    "Kopfzeile: Logo auf jeder Folgeseite (position:fixed) — alle 9 Druckansichten",
+    "Fußzeile: 3-spaltig vereinheitlicht — Name/Adresse/Web, Bank/IBAN/BIC, Steuer/Kleinunternehmer",
+    "ContractPrint: fehlender Logo-Header nachgerüstet",
+    "DsgvoPrint: Header-Bug behoben (war in v-else-Zweig verschachtelt)",
+    "Firmendaten: Victoria Elisabeth Emanuel vorausgefüllt",
+    "Einstellungen: Referenzkarte Einfache Nutzungsrechte (Zuschlagstabelle) ergänzt",
+    "Versionsschema: 1.0.0-beta.2"
+  ]
+}

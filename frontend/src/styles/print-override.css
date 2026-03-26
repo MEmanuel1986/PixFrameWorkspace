@@ -1,0 +1,121 @@
+/**
+ * print-override.css
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Behebt die PDF-Layout-Bugs in allen 9 Print-Views durch 3 globale Regeln.
+ * Wird in main.js einmalig importiert.
+ *
+ * Bug 1 — Footer überlagert Inhalt auf Seite 2+:
+ *   .print-page-footer, .pf  → display:none
+ *   Puppeteer displayHeaderFooter/footerTemplate übernimmt (gilt jede Seite)
+ *
+ * Bug 2 — Seitenzahlen "Seite 0 von 0":
+ *   counter(page)/counter(pages) funktionieren in Puppeteer ohne
+ *   displayHeaderFooter nicht. Footertemplate mit class="pageNumber"/"totalPages"
+ *   behebt das. Die CSS-Counter-Klassen .pp-cur/.pp-tot werden deaktiviert.
+ *
+ * Bug 3 — Kein Top/Bottom-Margin auf Seite 2+:
+ *   .a4 { padding: 0 } im @media print
+ *   Puppeteer margin: { top:'14mm', right:'18mm', bottom:'28mm', left:'18mm' }
+ *   gilt für JEDE Seite.
+ *
+ * Bug 4 — Tabellen umbrechen mitten in Zeilen:
+ *   tr { break-inside: avoid }
+ *   thead { display: table-header-group }  → Kopf auf jeder Seite
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+
+@media print {
+
+  /* ─── RESET: Grauer Hintergrund + Screen-Layout deaktivieren ────────────
+     Ursache: body { background: #d8d8d8/#e0e0e0 } in den Print-Views ist
+     OHNE @media screen Guard. Mit printBackground:true rendert Puppeteer
+     diesen Hintergrund ins PDF.
+     .page-wrap hat padding+flex-center (Screen-Layout).
+     Beide werden hier explizit überschrieben.
+  ──────────────────────────────────────────────────────────────────────── */
+  html, body {
+    background: white !important;
+    margin:     0     !important;
+    padding:    0     !important;
+  }
+
+  .page-wrap {
+    padding:    0     !important;
+    background: white !important;
+    display:    block !important;
+    margin:     0     !important;
+  }
+
+  .a4 {
+    margin:        0    !important;
+    box-shadow:    none !important;
+    width:         100% !important;
+    min-height:    0    !important;
+    /* padding wird von der jeweiligen Seite gesetzt —
+       für Puppeteer überschreibt PUPPETEER_HIDE_CSS mit padding:0 */
+    background:    white !important;
+  }
+
+  .print-content {
+    padding:    0     !important;
+    min-height: 0     !important;
+    margin:     0     !important;
+    box-shadow: none  !important;
+    width:      100%  !important;
+    background: white !important;
+  }
+
+  /* ─── BUG 1: Alte position:fixed Footer deaktivieren ────────────────────
+     DocumentPrint, ContractPrint, AddendumPrint, AdvPrint → .print-page-footer
+     AgbPrint, DsgvoPrint, EarPrint, BlankContractPrint, AdvVertragPrint → .pf
+     Werden durch Puppeteer footerTemplate ersetzt.
+  ──────────────────────────────────────────────────────────────────────── */
+  .print-page-footer { display: none !important; }
+  .pf               { display: none !important; }
+
+  /* ─── Logo-Header deaktivieren (durch Puppeteer headerTemplate ersetzt) ─ */
+  .page-header-logo  { display: none !important; }
+
+  /* ─── BUG 2: CSS-Counter deaktivieren ───────────────────────────────────
+     Verhindern dass die leeren .pp-cur/.pp-tot Spans noch eine Ausgabe erzeugen.
+  ──────────────────────────────────────────────────────────────────────── */
+  .pp-cur::before { content: none !important; }
+  .pp-tot::before { content: none !important; }
+
+  /* BUG 3: .a4 und .print-content bereits im RESET-Block oben abgedeckt */
+
+  /* ─── BUG 4: Tabellen-Seitenumbrüche ────────────────────────────────────
+     Verhindert abgeschnittene Tabellenzeilen und sorgt dafür dass der
+     Tabellenkopf auf jeder Seite wiederholt wird.
+  ──────────────────────────────────────────────────────────────────────── */
+  thead  { display: table-header-group !important; }
+  tfoot  { display: table-footer-group !important; }
+  tr     { break-inside: avoid !important; }
+
+  /* ─── Zusätzliche Seitenumbruch-Optimierungen ───────────────────────────
+     Verhindert Orphans und Widows bei fließendem Text.
+  ──────────────────────────────────────────────────────────────────────── */
+  h1, h2, h3, h4, h5 { break-after:  avoid !important; }
+  p                   { orphans: 3; widows: 3; }
+
+  /* Kompakte Blöcke nicht aufteilen */
+  .break-inside-avoid,
+  .sig-block,
+  .sig-grid,
+  .party-block,
+  .parties-grid,
+  .payment-block,
+  .totals-section,
+  .totals-table,
+  .infobox,
+  .storno-table,
+  .section {
+    break-inside: avoid !important;
+  }
+
+  /* Dokument-Titel-Block nie alleine am Seitenende */
+  .doc-title-block,
+  .sh-row {
+    break-after: avoid !important;
+  }
+}
