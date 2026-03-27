@@ -1,0 +1,10 @@
+[52396:0327/082117.645:ERROR:CONSOLE(1)] "Runtime agent is not enabled", source: devtools://devtools/bundled/core/sdk/sdk.js (1)
+[PDF] Generiere: /api/pdf/agb
+[PDF] Lade: http://localhost:5173/print/agb
+[PDF] Fertig: 169328 Bytes
+[52396:0327/082728.505:ERROR:CONSOLE(1)] "Runtime agent is not enabled", source: devtools://devtools/bundled/core/sdk/sdk.js (1)
+[PDF] Generiere: /api/pdf/agb
+[PDF] Lade: http://localhost:5173/print/agb
+[PDF] Fertig: 169328 Bytes
+(node:52396) electron: Failed to load URL: http://localhost:5173/projects/projects_47750842 with error: ERR_NETWORK_IO_SUSPENDED
+(Use `electron --trace-warnings ...` to show where the warning was created)

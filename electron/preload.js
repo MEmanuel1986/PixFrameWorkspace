@@ -1,6 +1,6 @@
 'use strict';
 /**
- * electron/preload.js - IPC Bridge für PixFrame Workspace
+ * electron/preload.js - IPC Bridge fuer PixFrame Workspace
  *
  * Stellt sichere API-Methoden im Renderer-Prozess bereit
  * via window.pixframe (contextIsolation: true).
@@ -19,4 +19,10 @@ contextBridge.exposeInMainWorld('pixframe', {
 
   // Native Funktionen
   openFolder: (folderPath) => ipcRenderer.invoke('open-folder', folderPath),
+
+  // PDF-Generierung
+  // apiPath: z.B. '/api/pdf/document/abc123'
+  // options: { docLabel?, docType? }
+  // Returns: ArrayBuffer (PDF)
+  generatePDF: (apiPath, options) => ipcRenderer.invoke('generate-pdf', apiPath, options),
 });

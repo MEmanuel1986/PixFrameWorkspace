@@ -1,75 +1,79 @@
 /**
- * pdfExport.js
- * PDF-Download via Puppeteer-Backend (Option B).
+ * pdfExport.js — PDF-Download fuer PixFrameWorkspace v1.1.0
  *
- * Der Express-Backend rendert die Print-Vue-Route mit Headless-Chrome
- * und gibt ein echtes, seitenkorrektes PDF zurück.
+ * Primaer:  Electron IPC → main process → BrowserWindow.printToPDF
+ * Fallback: Browser-Druckdialog (window.print)
  *
- * Verwendung:
- *   downloadPdfFromBackend('/api/pdf/document/abc123', 'RE-2026-001_Mustermann')
- *   printWithFilename('RE-2026-001')  // Fallback: window.print() für Druckdialog
+ * Kein Puppeteer, kein Backend-Rendering mehr noetig.
  */
 
-import apiClient, { API_BASE } from './api'
+import { API_BASE } from './api'
 
 /**
- * Lädt ein PDF vom Puppeteer-Backend herunter.
+ * Laedt ein PDF herunter.
+ *
+ * In Electron: Generierung via IPC (verstecktes BrowserWindow + printToPDF)
+ * Ohne Electron: Oeffnet den Browser-Druckdialog
  *
  * @param {string} apiPath  - z.B. '/api/pdf/document/abc123'
  * @param {string} filename - Dateiname ohne .pdf
+ * @param {object} options  - { docLabel?, docType? }
  */
-export async function downloadPdfFromBackend(apiPath, filename) {
-  try {
-    const response = await fetch(`${API_BASE}${apiPath}`, {
-      method: 'GET',
-    })
-    if (!response.ok) {
-      throw new Error(`Server antwortete mit HTTP ${response.status}`)
+export async function downloadPdfFromBackend(apiPath, filename, options = {}) {
+  // ── Electron: PDF via IPC generieren ──
+  if (window.pixframe?.isElectron && window.pixframe?.generatePDF) {
+    try {
+      const buffer = await window.pixframe.generatePDF(apiPath, options)
+
+      if (!buffer || buffer.byteLength === 0) {
+        throw new Error('Leerer PDF-Buffer')
+      }
+
+      // ArrayBuffer → Blob → Download
+      const blob = new Blob([buffer], { type: 'application/pdf' })
+      const url  = URL.createObjectURL(blob)
+      const a    = document.createElement('a')
+      const safe = sanitizeFilename(filename)
+      a.href     = url
+      a.download = `${safe}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      return
+    } catch (err) {
+      console.error('[pdfExport] Electron-PDF fehlgeschlagen:', err)
+      // Fallback auf Druckdialog
+      printWithFilename(filename)
+      throw err
     }
-    const blob = await response.blob()
-    const url  = URL.createObjectURL(blob)
-    const a    = document.createElement('a')
-    const safe = (filename || 'Dokument')
-      .replace(/[^\w\-äöüÄÖÜß]/g, '_')
-      .replace(/__+/g, '_')
-      .slice(0, 120)
-    a.href     = url
-    a.download = `${safe}.pdf`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
-  } catch (err) {
-    console.error('[pdfExport] Backend-Download fehlgeschlagen:', err)
-    // Fallback auf Browser-Druckdialog
-    printWithFilename(filename)
-    throw err
   }
+
+  // ── Kein Electron: Browser-Druckdialog ──
+  printWithFilename(filename)
 }
 
 /**
- * Öffnet den Browser-Druckdialog (Fallback / Direktdruck).
+ * Oeffnet den Browser-Druckdialog.
  * @param {string} filename
  */
 export function printWithFilename(filename) {
-  const safe = (filename || 'Dokument')
-    .replace(/[^a-z0-9äöüÄÖÜß_\-\s]/gi, '_')
-    .replace(/\s+/g, '_')
-    .slice(0, 120)
+  const safe = sanitizeFilename(filename)
   const orig = document.title
   document.title = safe
   window.print()
   setTimeout(() => { document.title = orig }, 3000)
 }
 
-/** Compat-Shim: downloadPdfFromElement → jetzt downloadPdfFromBackend */
+/**
+ * Compat-Shim: downloadPdfFromElement → printWithFilename
+ */
 export async function downloadPdfFromElement(element, filename) {
   printWithFilename(filename)
 }
 
 /**
- * Lädt ein Logo von einer URL und konvertiert es zu einem base64 Data-URL.
- * (Wird für die Browser-Vorschau benötigt.)
+ * Laedt ein Logo von einer URL und konvertiert es zu einem base64 Data-URL.
  */
 export async function fetchLogoAsDataUrl(url) {
   if (!url) return null
@@ -86,4 +90,13 @@ export async function fetchLogoAsDataUrl(url) {
   } catch {
     return null
   }
+}
+
+// ── Hilfsfunktionen ──────────────────────────────────────────────────
+
+function sanitizeFilename(filename) {
+  return (filename || 'Dokument')
+    .replace(/[^\w\-äöüÄÖÜß]/g, '_')
+    .replace(/__+/g, '_')
+    .slice(0, 120)
 }

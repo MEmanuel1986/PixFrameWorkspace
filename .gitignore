@@ -1,13 +1,38 @@
+# Dependencies
 node_modules/
+
+# Build output
 dist/
 dist-electron/
+
+# Workspace data (user-specific, not code)
 backend/data/
 backend/uploads/
 backend/backups/
 backend/logs/
+
+# SQLite files
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm
+
+# Environment
 .env
+.env.local
+
+# OS files
 .DS_Store
 Thumbs.db
+desktop.ini
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+npm-debug.log*
+
+# Temp
+*.tmp
