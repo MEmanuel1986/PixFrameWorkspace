@@ -19,7 +19,6 @@ const holidayRoutes   = require('./routes/holidays');
 const emailRoutes     = require('./routes/email');
 const pdfRoutes       = require('./routes/pdf');
 const backupRoutes    = require('./routes/backup');
-const updateRoutes    = require('./routes/update');
 
 const app = express();
 
@@ -34,7 +33,6 @@ app.use(fileUpload({
 }));
 
 // ━━━ Static Files ━━━
-// /uploads: explizite CORS-Header damit Browser beim Drucken keine Cross-Origin-Blockierung hat
 app.use('/uploads', (req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'GET')
@@ -54,7 +52,7 @@ app.get('/api/health', (req, res) => {
     status: 'ok',
     app: config.APP_NAME,
     timestamp: new Date().toISOString(),
-    version: '1.0.0-beta.2',
+    version: '1.1.0',
   });
 });
 
@@ -70,7 +68,6 @@ app.use('/api/holidays',  holidayRoutes);
 app.use('/api/email',     emailRoutes);
 app.use('/api/pdf',       pdfRoutes);
 app.use('/api/backup',    backupRoutes);
-app.use('/api/update',    updateRoutes);
 
 // ━━━ 404 Handler ━━━
 app.use((req, res) => {
