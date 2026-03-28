@@ -13,6 +13,17 @@
       <div v-else class="page-header-logo-text">{{ settings.company.name }}</div>
     </header>
     <!-- ── Toolbar ── -->
+    <div class="toolbar no-print">
+      <div class="toolbar-left">
+        <button class="btn-back" @click="goBack">← Zurück</button>
+        <span class="toolbar-title">Blanko-Vertrag</span>
+      </div>
+      <div class="toolbar-right">
+        <button class="btn-print" @click="downloadPDF" :disabled="pdfLoading">
+          {{ pdfLoading ? '⏳ PDF wird erstellt…' : '💾 PDF speichern' }}
+        </button>
+      </div>
+    </div>
     <!-- IT-Doku-style Druck-Hinweis -->
 
 
@@ -316,6 +327,7 @@ export default {
   setup() {
     const router  = useRouter()
     const loading = ref(true)
+    const pdfLoading = ref(false)
     const error   = ref(null)
     const settings = ref({ company: {} })
     const editMode = ref(false)
@@ -376,7 +388,18 @@ export default {
     }
 
     onMounted(fetchAll)
-    return {logoDataUrl,  loading, error, settings, editMode, f, goBack, fmtDate, printContract }
+    async function downloadPDF() {
+      pdfLoading.value = true
+      try {
+        await downloadPdfFromBackend('/api/pdf/blank-contract', 'Blanko_Vertrag')
+      } catch(e) {
+        console.error('PDF-Fehler:', e)
+      } finally {
+        pdfLoading.value = false
+      }
+    }
+
+    return {logoDataUrl, pdfLoading, loading, error, settings, editMode, f, goBack, fmtDate, printContract, downloadPDF }
   }
 }
 </script>

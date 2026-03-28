@@ -874,6 +874,7 @@
 <script>
 import { ref, reactive, computed, watch, onMounted, nextTick } from 'vue'
 import { useStore }              from '../stores/useStore'
+import { downloadPdfFromBackend } from '../services/pdfExport.js'
 // ── Pipeline Sub-Komponenten ──────────────────────────────────────────────────
 import ProjectPipelineAnfrage     from '../components/project/ProjectPipelineAnfrage.vue'
 import ProjectPipelineVorgespraech from '../components/project/ProjectPipelineVorgespraech.vue'
@@ -1036,20 +1037,27 @@ export default {
       }
     }
 
-    // ── Dokument-Aktionen (unified, kein Duplikat) ──────────────────────────
-    // Öffnet DocumentPrint — optional mit action='print' oder action='download'
-    // Schließt immer das docsModal (window.open MUSS vor modal-close stehen)
+    // ── Dokument-Aktionen (unified) ──────────────────────────────────
+    // PDF direkt speichern via Electron IPC (kein neues Fenster)
     function openDocPrint(doc, action = null) {
-      const url = router.resolve({
-        name: 'DocumentPrint',
-        params: { id: doc.id },
-        query: action ? { action } : {},
-      }).href
-      window.open(url, '_blank')
+      if (!action) {
+        // Vorschau: Fenster oeffnen
+        const url = router.resolve({
+          name: 'DocumentPrint',
+          params: { id: doc.id },
+        }).href
+        window.open(url, '_blank')
+        docsModal.value = false
+        return
+      }
+      // PDF direkt speichern
+      const filename = [doc.documentNumber, doc.customerName].filter(Boolean).join('_')
+      downloadPdfFromBackend(`/api/pdf/document/${doc.id}`, filename)
+        .catch(e => console.error('PDF-Fehler:', e))
       docsModal.value = false
     }
 
-    // ⬇️-Shorthand (bleibt für interne Aufrufe)
+    // Shorthand
     function openDocDownload(doc) {
       openDocPrint(doc, 'download')
     }
@@ -1308,20 +1316,29 @@ export default {
 
     function openContractPrint(autoAction = false) {
       if (!project.value) return
-      const query = autoAction ? `?action=${autoAction}` : ''
-      window.open(`/print/contract/${project.value.id}${query}`, '_blank')
+      if (!autoAction) {
+        // Vorschau: Fenster oeffnen
+        window.open(`/print/contract/${project.value.id}`, '_blank')
+        return
+      }
+      // PDF direkt speichern via Electron IPC (kein neues Fenster)
+      const p = project.value
+      const cu = customer.value
+      const filename = [p?.contractNumber || 'Vertrag', p?.category, cu?.lastName || cu?.company || ''].filter(Boolean).join('_')
+      downloadPdfFromBackend(`/api/pdf/contract/${project.value.id}`, filename)
+        .catch(e => console.error('PDF-Fehler:', e))
     }
 
-    // ── Vertrag drucken: Status → Verschickt, dann Druckdialog auto-triggern ──
+    // ── Vertrag drucken/speichern: Status → Verschickt, dann PDF speichern ──
     async function printContract() {
       if (contractStore.contractStatus === 'Entwurf') {
         contractStore.contractStatus = 'Verschickt'
         await saveContractStatus()
       }
-      openContractPrint('print')
+      openContractPrint('download')
     }
 
-    // ── Vertrag herunterladen: Status → Verschickt, dann PDF-Download auto-triggern ──
+    // ── Vertrag herunterladen: Status → Verschickt, dann PDF speichern ──
     async function downloadContract() {
       if (contractStore.contractStatus === 'Entwurf') {
         contractStore.contractStatus = 'Verschickt'
@@ -1332,24 +1349,32 @@ export default {
 
     function openAdvPrint() {
       if (!project.value) return
-      window.open(`/print/adv/${project.value.id}`, '_blank')
+      const cu = customer.value
+      const filename = 'ADV_' + (cu?.lastName || cu?.company || project.value.id)
+      downloadPdfFromBackend(`/api/pdf/adv/${project.value.id}`, filename)
+        .catch(e => console.error('PDF-Fehler:', e))
     }
 
     function openAddendumPrint(addendumId, autoAction = false) {
       if (!project.value) return
-      const query = autoAction ? `?action=${autoAction}` : ''
-      window.open(`/print/addendum/${project.value.id}/${addendumId}${query}`, '_blank')
+      if (!autoAction) {
+        window.open(`/print/addendum/${project.value.id}/${addendumId}`, '_blank')
+        return
+      }
+      const filename = 'Nachtrag_' + (project.value.contractNumber || project.value.id)
+      downloadPdfFromBackend(`/api/pdf/addendum/${project.value.id}/${addendumId}`, filename)
+        .catch(e => console.error('PDF-Fehler:', e))
     }
 
-    // ── Nachtrag drucken: Status → Verschickt, dann Druckdialog auto-triggern ──
+    // ── Nachtrag speichern: Status → Verschickt, dann PDF speichern ──
     async function printAddendum(add) {
       if ((add.addStatus || 'Entwurf') === 'Entwurf') {
         await setAddendumStatus(add, 'Verschickt')
       }
-      openAddendumPrint(add.id, 'print')
+      openAddendumPrint(add.id, 'download')
     }
 
-    // ── Nachtrag herunterladen: Status → Verschickt, dann PDF-Download ──────────
+    // ── Nachtrag herunterladen: Status → Verschickt, dann PDF speichern ──
     async function downloadAddendum(add) {
       if ((add.addStatus || 'Entwurf') === 'Entwurf') {
         await setAddendumStatus(add, 'Verschickt')

@@ -12,6 +12,18 @@
         alt="Logo" />
       <div v-else class="page-header-logo-text">{{ settings.company.name }}</div>
     </header>
+    <!-- Toolbar -->
+    <div class="toolbar no-print">
+      <div class="toolbar-left">
+        <button class="btn-back" @click="goBack">← Zurück</button>
+        <span class="toolbar-title">ADV-Vertrag (Projekt)</span>
+      </div>
+      <div class="toolbar-right">
+        <button class="btn-print" @click="downloadPDF" :disabled="pdfLoading">
+          {{ pdfLoading ? '⏳ PDF wird erstellt…' : '💾 PDF speichern' }}
+        </button>
+      </div>
+    </div>
     <!-- IT-Doku-style Druck-Hinweis -->
 
 
@@ -233,6 +245,7 @@ export default {
     const router   = useRouter()
     const logoDataUrl = ref(null)  // base64-eingebettetes Logo
     const loading  = ref(true)
+    const pdfLoading = ref(false)
     const error    = ref(null)
     const project  = ref(null)
     const customer = ref(null)
@@ -279,7 +292,22 @@ export default {
       }
     }
     onMounted(fetchAll)
-    return {logoDataUrl,  loading, error, project, customer, settings, fmtDate, goBack, window }
+
+    async function downloadPDF() {
+      const pid = route.params.projectId
+      const name = (customer.value?.lastName || customer.value?.company || 'ADV').replace(/[^a-z0-9äöüÄÖÜß\- ]/gi, '_')
+      const filename = 'ADV_' + name
+      pdfLoading.value = true
+      try {
+        await downloadPdfFromBackend('/api/pdf/adv/' + pid, filename)
+      } catch(e) {
+        console.error('PDF-Fehler:', e)
+      } finally {
+        pdfLoading.value = false
+      }
+    }
+
+    return {logoDataUrl, pdfLoading, loading, error, project, customer, settings, fmtDate, goBack, downloadPDF, window }
   }
 }
 </script>

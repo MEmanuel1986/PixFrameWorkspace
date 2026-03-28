@@ -636,6 +636,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useStore } from '../stores/useStore'
 import apiClient, { API_BASE } from '../services/api'
+import { downloadPdfFromBackend } from '../services/pdfExport.js'
 
 // API_BASE wird aus ../services/api importiert — keine lokale Überschreibung nötig.
 function receiptUrl(path) { return path ? API_BASE + path : '#' }
@@ -1054,7 +1055,8 @@ export default {
     }
 
     function openEarPrint() {
-      window.open(`/print/ear/${selectedYear.value}`, '_blank')
+      downloadPdfFromBackend(`/api/pdf/ear/${selectedYear.value}`, `EUER_${selectedYear.value}`)
+        .catch(e => console.error('PDF-Fehler:', e))
     }
 
     onMounted(async () => {

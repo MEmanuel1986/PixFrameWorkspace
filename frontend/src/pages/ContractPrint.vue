@@ -14,6 +14,19 @@
       <div v-else class="page-header-logo-text">{{ settings.company.name }}</div>
     </header>
 
+    <!-- ── Toolbar ── -->
+    <div class="toolbar no-print">
+      <div class="toolbar-left">
+        <button class="btn-back" @click="goBack">← Zurück</button>
+        <span class="toolbar-title">Vertrag</span>
+      </div>
+      <div class="toolbar-right">
+        <button class="btn-print" @click="downloadContractPDF" :disabled="pdfLoading">
+          {{ pdfLoading ? '⏳ PDF wird erstellt…' : '💾 PDF speichern' }}
+        </button>
+      </div>
+    </div>
+
     <!-- ── Fixer Seitenfuß: position:fixed → jede Druckseite ── -->
     <footer class="print-page-footer no-screen">
       <div class="ppf-main-row">
@@ -371,7 +384,6 @@ export default {
         await downloadPdfFromBackend(`/api/pdf/contract/${route.params.projectId}`, filename)
       } catch(e) {
         console.error('PDF-Fehler:', e)
-        printWithFilename(filename)
       } finally {
         pdfLoading.value = false
       }
@@ -429,7 +441,7 @@ export default {
       // Auto-trigger print or download based on ?action= query param
       const action = route.query.action
       if (action === 'print' || action === 'download') {
-        setTimeout(() => printContract(), 400)
+        setTimeout(() => downloadContractPDF(), 400)
       } else if (action === 'download') {
         setTimeout(() => downloadContractPDF(), 400)
       }
@@ -469,6 +481,17 @@ body {
 .no-screen { display:none; }
 @media print  { .no-print  { display:none !important; } .no-screen { display:block !important; } }
 @media screen { .no-screen { display:none !important; } }
+
+/* ── Toolbar ── */
+.toolbar { position:fixed; top:0; left:0; right:0; z-index:500; background:#111827; color:white; display:flex; justify-content:space-between; align-items:center; padding:11px 24px; gap:16px; box-shadow:0 2px 16px rgba(0,0,0,.4); }
+.toolbar-left { display:flex; align-items:center; gap:14px; min-width:0; }
+.toolbar-right { display:flex; align-items:center; gap:8px; }
+.toolbar-title { font-size:13px; color:rgba(255,255,255,.8); font-weight:500; }
+.btn-back { background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.2); color:white; padding:6px 13px; border-radius:6px; cursor:pointer; font-size:12px; }
+.btn-back:hover { background:rgba(255,255,255,.2); }
+.btn-print { background:#2563eb; border:none; color:white; padding:8px 18px; border-radius:6px; cursor:pointer; font-size:13px; font-weight:600; }
+.btn-print:hover { background:#1d4ed8; }
+.btn-print:disabled { opacity:.6; cursor:wait; }
 
 /*
  * ── Logo-Header ab Seite 2 (Puppeteer-gesteuert) ──────────────────────────────

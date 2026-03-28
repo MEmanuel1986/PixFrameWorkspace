@@ -24,6 +24,19 @@
       <div v-else class="page-header-logo-text">{{ settings.company.name }}</div>
     </header>
 
+    <!-- ── Toolbar ── -->
+    <div class="toolbar no-print">
+      <div class="toolbar-left">
+        <button class="btn-back" @click="goBack">← Zurück</button>
+        <span class="toolbar-title">{{ doc?.type === 'invoice' ? 'Rechnung' : 'Angebot' }} {{ doc?.documentNumber }}</span>
+      </div>
+      <div class="toolbar-right">
+        <button class="btn-pdf" @click="downloadPDF" :disabled="pdfLoading">
+          {{ pdfLoading ? '⏳ PDF wird erstellt…' : '💾 PDF speichern' }}
+        </button>
+      </div>
+    </div>
+
     <!-- ── Fixer Seitenfuß (position:fixed → erscheint auf jeder Druckseite) ── -->
     <footer class="print-page-footer">
       <div class="ppf-main-row">
@@ -466,7 +479,7 @@ export default {
       const action = route.query.action
       if (action === 'print' || action === 'download') {
         // 800ms Delay damit Vue das Dokument vollständig gerendert hat
-        setTimeout(() => printDoc(), 800)
+        setTimeout(() => downloadPDF(), 800)
       }
     })
 

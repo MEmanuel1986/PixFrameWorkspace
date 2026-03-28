@@ -13,8 +13,17 @@
     </header>
 
     <!-- Toolbar -->
-
-    
+    <div class="toolbar no-print">
+      <div class="toolbar-left">
+        <button class="btn-back" @click="goBack">← Zurück</button>
+        <span class="toolbar-title">Einnahmen-Ausgaben-Rechnung {{ year }}</span>
+      </div>
+      <div class="toolbar-right">
+        <button class="btn-print" @click="downloadPDF" :disabled="pdfLoading">
+          {{ pdfLoading ? '⏳ PDF wird erstellt…' : '💾 PDF speichern' }}
+        </button>
+      </div>
+    </div>
 
     <!-- Fixed page footer -->
     <footer class="pf no-screen">
@@ -247,6 +256,7 @@ export default {
     const year    = parseInt(route.params.year) || new Date().getFullYear()
     const logoDataUrl = ref(null)  // base64-eingebettetes Logo
     const loading = ref(true)
+    const pdfLoading = ref(false)
     const error   = ref(null)
     const settings  = ref({ company: {} })
     const documents = ref([])
@@ -330,11 +340,13 @@ export default {
     async function downloadPDF() {
       const name = (settings.value?.company?.name || 'Studio').replace(/[^a-z0-9äöüÄÖÜß\- ]/gi, '_')
       const filename = 'EUER_' + year + '_' + name
+      pdfLoading.value = true
       try {
         await downloadPdfFromBackend('/api/pdf/ear/' + year, filename)
       } catch(e) {
         console.error('PDF-Fehler:', e)
-        printPage()
+      } finally {
+        pdfLoading.value = false
       }
     }
 
@@ -371,7 +383,7 @@ export default {
     }
 
     onMounted(fetchAll)
-    return {logoDataUrl,  year, loading, error, settings, invoices, correctedIds, incomeTotal, incomePaid, yearExpenses, expensesTotal, expensesByCategory, mileageEntries, kmRate, totalKm, profit, fmtDate, fmtEur, customerName, projectName, goBack, printPage }
+    return {logoDataUrl, pdfLoading, year, loading, error, settings, invoices, correctedIds, incomeTotal, incomePaid, yearExpenses, expensesTotal, expensesByCategory, mileageEntries, kmRate, totalKm, profit, fmtDate, fmtEur, customerName, projectName, goBack, printPage, downloadPDF }
   }
 }
 </script>

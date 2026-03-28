@@ -210,7 +210,7 @@ export default {
       await fetchAll()
       const action = route.query.action
       if (action === 'print' || action === 'download') {
-        setTimeout(() => printAddendum(), 400)
+        setTimeout(() => downloadAddendumPDF(), 400)
       } else if (action === 'download') {
         setTimeout(() => downloadAddendumPDF(), 400)
       }

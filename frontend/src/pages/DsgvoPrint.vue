@@ -4,6 +4,17 @@
 
   <template v-else>
     <!-- Toolbar -->
+    <div class="toolbar no-print">
+      <div class="toolbar-left">
+        <button class="btn-back" @click="goBack">← Zurück</button>
+        <span class="toolbar-title">Datenschutzerklärung</span>
+      </div>
+      <div class="toolbar-right">
+        <button class="btn-print" @click="downloadPDF" :disabled="pdfLoading">
+          {{ pdfLoading ? '⏳ PDF wird erstellt…' : '💾 PDF speichern' }}
+        </button>
+      </div>
+    </div>
     <!-- IT-Doku-style Druck-Hinweis -->
 
     <!-- ── Logo-Header: position:fixed → ab Seite 2 oben rechts ── -->
@@ -161,6 +172,7 @@ export default {
     const router = useRouter()
     const logoDataUrl = ref(null)  // base64-eingebettetes Logo
     const loading = ref(true)
+    const pdfLoading = ref(false)
     const error   = ref(null)
     const settings        = ref({ company: {} })
     const dsgvoParagraphs = ref([])
@@ -181,11 +193,13 @@ export default {
     async function downloadPDF() {
       const name = (settings.value?.company?.name || 'Studio').replace(/[^a-z0-9äöüÄÖÜß\- ]/gi, '_')
       const filename = 'DSGVO_' + name
+      pdfLoading.value = true
       try {
         await downloadPdfFromBackend('/api/pdf/dsgvo', filename)
       } catch(e) {
         console.error('PDF-Fehler:', e)
-        printPage()
+      } finally {
+        pdfLoading.value = false
       }
     }
 
@@ -223,7 +237,7 @@ export default {
     }
 
     onMounted(fetchAll)
-    return {logoDataUrl,  loading, error, settings, allParagraphs: dsgvoParagraphs, goBack, fmtDate, printPage }
+    return {logoDataUrl, pdfLoading, loading, error, settings, allParagraphs: dsgvoParagraphs, goBack, fmtDate, printPage, downloadPDF }
   }
 }
 </script>

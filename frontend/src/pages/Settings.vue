@@ -504,9 +504,9 @@
       <div v-if="activeTab === 'clauses'" class="s-content">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;flex-wrap:wrap;gap:8px">
           <p class="s-intro" style="margin:0">Alle Rechtstexte des generierten Vertrags sind hier editierbar. Aenderungen gelten sofort fuer neu erstellte Vertraege. Platzhalter: <code>{studioName}</code>, <code>{archivDauer}</code>, <code>{minCopyrightDamage}</code> werden beim Drucken ersetzt.</p>
-          <a href="/print/blank-contract" target="_blank" class="btn btn-sm btn-secondary" style="flex-shrink:0" title="Ausfüllbaren Blankovertrag als PDF herunterladen">
-            📄 Blankovertrag
-          </a>
+          <button class="btn btn-sm btn-secondary" style="flex-shrink:0" title="Blankovertrag als PDF speichern" @click="savePdf('/api/pdf/blank-contract', 'Blanko_Vertrag')">
+            💾 Blankovertrag
+          </button>
         </div>
 
         <!-- Zahlungsarten (hier oben — war bisher unten) -->
@@ -1267,9 +1267,9 @@
             <div class="s-intro-text">Paragraphen und Unterpunkte sind vollständig editierbar. Nummern werden automatisch aus der Reihenfolge berechnet.</div>
           </div>
           <div style="display:flex;gap:8px;margin-left:auto;flex-shrink:0">
-            <a href="/print/agb" target="_blank" class="btn btn-sm btn-secondary" title="AGB als gestaltetes PDF herunterladen">
-              📥 AGB als PDF
-            </a>
+            <button class="btn btn-sm btn-secondary" title="AGB als PDF speichern" @click="savePdf('/api/pdf/agb', 'AGB')">
+              💾 AGB als PDF
+            </button>
             <button class="btn btn-sm btn-primary" @click="addAgbParagraph">+ Paragraph</button>
           </div>
         </div>
@@ -1331,9 +1331,9 @@
             <div class="s-intro-text">Abschnitte und Unterpunkte sind vollständig editierbar. Wird als eigenständiges PDF-Dokument bereitgestellt.</div>
           </div>
           <div style="display:flex;gap:8px;margin-left:auto;flex-shrink:0">
-            <a href="/print/dsgvo" target="_blank" class="btn btn-sm btn-secondary" title="DSGVO als PDF herunterladen">
-              📥 DSGVO als PDF
-            </a>
+            <button class="btn btn-sm btn-secondary" title="DSGVO als PDF speichern" @click="savePdf('/api/pdf/dsgvo', 'Datenschutzerklaerung')">
+              💾 DSGVO als PDF
+            </button>
             <button class="btn btn-sm btn-primary" @click="addDsgvoParagraph">+ Abschnitt</button>
           </div>
         </div>
@@ -1375,9 +1375,9 @@
             <div class="s-intro-text">Wird bei B2B-Aufträgen eingesetzt, wenn der Auftraggeber personenbezogene Daten zur Verfügung stellt. Inklusive Unterschriftenblock.</div>
           </div>
           <div style="display:flex;gap:8px;margin-left:auto;flex-shrink:0">
-            <a href="/print/adv-vertrag" target="_blank" class="btn btn-sm btn-secondary" title="ADV-Vertrag als PDF herunterladen">
-              📥 ADV als PDF
-            </a>
+            <button class="btn btn-sm btn-secondary" title="ADV-Vertrag als PDF speichern" @click="savePdf('/api/pdf/adv-vertrag', 'ADV_Vertrag')">
+              💾 ADV als PDF
+            </button>
             <button class="btn btn-sm btn-primary" @click="addAdvParagraph">+ Abschnitt</button>
           </div>
         </div>
@@ -1647,6 +1647,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute }    from 'vue-router'
 import { useSettings } from '../stores/useSettings'
 import apiClient, { API_BASE } from '../services/api'
+import { downloadPdfFromBackend } from '../services/pdfExport.js'
 
 export default {
   name: 'Settings',
@@ -2524,9 +2525,18 @@ export default {
 
 
 
+    // ── PDF direkt speichern (Electron IPC) ──────────────────────────────────
+    async function savePdf(apiPath, filename) {
+      try {
+        await downloadPdfFromBackend(apiPath, filename)
+      } catch(e) {
+        console.error('PDF-Fehler:', e)
+      }
+    }
+
     // ── PFS-Data / NAS-Pfad ───────────────────────────────────────────────────
     return {
-      availablePaymentMethods,
+      availablePaymentMethods, savePdf,
 
       activeTab, allTabs, navItems, openGroup, selectTab, isSettingsTab,
 
