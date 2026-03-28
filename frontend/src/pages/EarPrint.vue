@@ -327,9 +327,20 @@ export default {
     const kmRate  = computed(() => settings.value?.bookingTerms?.defaultKmRate ?? 0.30)
     const profit  = computed(() => incomeTotal.value - expensesTotal.value)
 
+    async function downloadPDF() {
+      const name = (settings.value?.company?.name || 'Studio').replace(/[^a-z0-9äöüÄÖÜß\- ]/gi, '_')
+      const filename = 'EUER_' + year + '_' + name
+      try {
+        await downloadPdfFromBackend('/api/pdf/ear/' + year, filename)
+      } catch(e) {
+        console.error('PDF-Fehler:', e)
+        printPage()
+      }
+    }
+
     function printPage() {
       const orig = document.title
-      document.title = `EAR_${year}_${(settings.value.company.name||'Studio').replace(/[^a-z0-9äöüÄÖÜß\- ]/gi,'_')}`
+      document.title = `EAR_${year}_${(settings.value?.company?.name||'Studio').replace(/[^a-z0-9äöüÄÖÜß\- ]/gi,'_')}`
       window.print()
       setTimeout(() => { document.title = orig }, 2000)
     }

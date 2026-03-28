@@ -100,7 +100,18 @@ function createWindow(url) {
       shell.openExternal(url);
       return { action: 'deny' };
     }
-    return { action: 'allow' };
+    // Localhost-Fenster (Print-Views etc.) brauchen das Preload-Script
+    // damit window.pixframe.generatePDF verfuegbar ist
+    return {
+      action: 'allow',
+      overrideBrowserWindowOptions: {
+        webPreferences: {
+          preload: path.join(__dirname, 'preload.js'),
+          contextIsolation: true,
+          nodeIntegration: false,
+        }
+      }
+    };
   });
 
   if (IS_DEV) mainWindow.webContents.openDevTools({ mode: 'detach' });

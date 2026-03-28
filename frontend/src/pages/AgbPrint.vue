@@ -13,7 +13,17 @@
       <div v-else class="page-header-logo-text">{{ settings.company.name }}</div>
     </header>
     <!-- ── Toolbar ── -->
-    <!-- IT-Doku-style Druck-Hinweis -->
+    <div class="toolbar no-print">
+      <div class="toolbar-left">
+        <button class="btn-back" @click="goBack">← Zurück</button>
+        <span class="toolbar-title">Allgemeine Geschäftsbedingungen</span>
+      </div>
+      <div class="toolbar-right">
+        <button class="btn-print" @click="downloadPDF" :disabled="pdfLoading">
+          {{ pdfLoading ? '⏳ PDF wird erstellt…' : '💾 PDF speichern' }}
+        </button>
+      </div>
+    </div>
 
 
     <!-- ── Fixer Seitenfuß ── -->
@@ -142,6 +152,7 @@ export default {
     const error   = ref(null)
     const settings     = ref({ company: {} })
     const agbParagraphs = ref([])
+    const pdfLoading = ref(false)
 
     function goBack() { window.history.length > 1 ? router.back() : window.close() }
 
@@ -165,7 +176,16 @@ export default {
     }
 
     async function downloadPDF() {
-      printPage()
+      const name = (settings.value?.company?.name || 'Studio').replace(/[^a-z0-9äöüÄÖÜß\- ]/gi, '_')
+      const filename = 'AGB_' + name
+      pdfLoading.value = true
+      try {
+        await downloadPdfFromBackend('/api/pdf/agb', filename)
+      } catch(e) {
+        console.error('PDF-Fehler:', e)
+      } finally {
+        pdfLoading.value = false
+      }
     }
 
     async function fetchAll() {
@@ -189,7 +209,7 @@ export default {
     }
 
     onMounted(fetchAll)
-    return {logoDataUrl,  loading, error, settings, agbParagraphs, goBack, fmtDate, printPage, downloadPDF }
+    return {logoDataUrl, pdfLoading, loading, error, settings, agbParagraphs, goBack, fmtDate, printPage, downloadPDF }
   }
 }
 </script>

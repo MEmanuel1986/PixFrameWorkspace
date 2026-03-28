@@ -178,9 +178,20 @@ export default {
       return parsed.toLocaleDateString('de-DE', { day:'2-digit', month:'2-digit', year:'numeric' })
     }
 
+    async function downloadPDF() {
+      const name = (settings.value?.company?.name || 'Studio').replace(/[^a-z0-9äöüÄÖÜß\- ]/gi, '_')
+      const filename = 'DSGVO_' + name
+      try {
+        await downloadPdfFromBackend('/api/pdf/dsgvo', filename)
+      } catch(e) {
+        console.error('PDF-Fehler:', e)
+        printPage()
+      }
+    }
+
     function printPage() {
       const orig = document.title
-      const name = (settings.value.company.name || 'Studio').replace(/[^a-z0-9äöüÄÖÜß\- ]/gi, '_')
+      const name = (settings.value?.company?.name || 'Studio').replace(/[^a-z0-9äöüÄÖÜß\- ]/gi, '_')
       document.title = `DSGVO_${name}`
       window.print()
       setTimeout(() => { document.title = orig }, 2000)

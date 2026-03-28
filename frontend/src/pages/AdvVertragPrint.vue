@@ -12,6 +12,18 @@
         alt="Logo" />
       <div v-else class="page-header-logo-text">{{ settings.company.name }}</div>
     </header>
+    <!-- Toolbar -->
+    <div class="toolbar no-print">
+      <div class="toolbar-left">
+        <button class="btn-back" @click="goBack">← Zurück</button>
+        <span class="toolbar-title">ADV-Vertrag</span>
+      </div>
+      <div class="toolbar-right">
+        <button class="btn-print" @click="downloadPDF" :disabled="pdfLoading">
+          {{ pdfLoading ? '⏳ PDF wird erstellt…' : '💾 PDF speichern' }}
+        </button>
+      </div>
+    </div>
     <!-- IT-Doku-style Druck-Hinweis -->
 
 
@@ -135,6 +147,7 @@ export default {
     const router = useRouter()
     const logoDataUrl = ref(null)  // base64-eingebettetes Logo
     const loading = ref(true)
+    const pdfLoading = ref(false)
     const error   = ref(null)
     const settings     = ref({ company: {} })
     const advParagraphs = ref([])
@@ -156,7 +169,18 @@ export default {
       window.print()
       setTimeout(() => { document.title = orig }, 2000)
     }
-    function downloadPDF() { printPage() }
+    async function downloadPDF() {
+      const name = (settings.value?.company?.name || 'Studio').replace(/[^a-z0-9äöüÄÖÜß\- ]/gi, '_')
+      const filename = 'ADV_Vertrag_' + name
+      pdfLoading.value = true
+      try {
+        await downloadPdfFromBackend('/api/pdf/adv-vertrag', filename)
+      } catch(e) {
+        console.error('PDF-Fehler:', e)
+      } finally {
+        pdfLoading.value = false
+      }
+    }
     async function fetchAll() {
       try {
         const sr = await fetch(`${API}/settings`)
@@ -177,7 +201,7 @@ export default {
       }
     }
     onMounted(fetchAll)
-    return {logoDataUrl,  loading, error, settings, advParagraphs, goBack, fmtDate, printPage, downloadPDF }
+    return {logoDataUrl, pdfLoading, loading, error, settings, advParagraphs, goBack, fmtDate, printPage, downloadPDF }
   }
 }
 </script>
