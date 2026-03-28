@@ -3,8 +3,9 @@
 **Studio-Management-Software für Fotografen und Videografen**
 Auftragsverwaltung · Kundenkartei · Verträge · Angebote · Rechnungen · FiBu · Fahrtenbuch · Kalender
 
-![Version](https://img.shields.io/badge/version-1.0.0--beta.1-blue)
-![Stack](https://img.shields.io/badge/stack-Vue3%20%2B%20Express-blue)
+![Version](https://img.shields.io/badge/version-1.1.0-blue)
+![Stack](https://img.shields.io/badge/stack-Vue3%20%2B%20Express%20%2B%20Electron-blue)
+![DB](https://img.shields.io/badge/db-SQLite-green)
 ![Status](https://img.shields.io/badge/status-Beta-green)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-lightgrey)
 
@@ -12,235 +13,131 @@ Auftragsverwaltung · Kundenkartei · Verträge · Angebote · Rechnungen · FiB
 
 ## Voraussetzungen
 
-| Tool | Mindestversion |
-|---|---|
-| Node.js | **18.x** (wird geprüft) |
-| npm | 9.x |
+| Tool | Version |
+|------|---------|
+| Node.js | **22.x LTS** (empfohlen) |
+| npm | 9.x+ |
+
+> **Hinweis:** Node.js v24 wird nicht unterstützt (keine better-sqlite3 Prebuilds).
 
 ---
 
 ## Schnellstart
 
-### Windows
-
-| Datei | Aktion |
-|---|---|
-| `win\Install.bat` | Einmalig — installiert alle Abhängigkeiten inkl. Puppeteer/Chromium |
-| `win\Start-All.bat` | Backend + Frontend zusammen starten |
-
-### macOS
+### Entwicklung
 
 ```bash
-# Einmalig — installiert alle Abhängigkeiten
-bash mac/install.sh
+# Abhängigkeiten installieren (Root + Backend + Frontend)
+npm install
+cd backend && npm install && cd ..
+cd frontend && npm install && cd ..
 
-# Starten
-bash mac/start-all.sh
+# Starten (Backend + Frontend + Electron gleichzeitig)
+npm run dev
 ```
 
-> **Hinweis:** Beim ersten Start lädt Puppeteer Chromium herunter (~150 MB, einmalig).
-> Falls macOS Gatekeeper den Start blockiert: Systemeinstellungen → Sicherheit → Dennoch öffnen.
+Nach dem Start öffnet sich automatisch die Electron Desktop-App.
 
-Nach dem Start:
-- **Frontend:** http://localhost:5173
-- **Backend API:** http://localhost:3001
-- **Health-Check:** http://localhost:3001/api/health
+### Produktions-Build
 
----
+```bash
+npm run build
+```
 
-## Was ist neu in v1.0.0-beta.1?
-
-- 🍎 **macOS vollständig kompatibel** — nodemon 3, iTerm2-Support, Node-Mindestversion geprüft
-- ⚠️ **Logo-Fehlerhinweis** — bei fehlendem Logo nach Neuinstallation klare Meldung statt Broken Image
-- 🏷️ **Artikelnummer im Druck** — eigene Zeile statt direkt am Artikelnamen
-- 🔢 **Versionsnummer im Dashboard** — immer sichtbar unten links
+Erstellt eine installierbare `.exe` (Windows), `.dmg` (Mac) oder `.AppImage` (Linux).
 
 ---
 
-## Projektstruktur
+## Architektur
 
 ```
 PixFrameWorkspace/
-│
-├── win/                            ← Windows Start- & Installationsskripte
-│   ├── Install.bat / Install.ps1
-│   ├── Start-All.bat / Start-All.ps1
-│   ├── Start-Backend.ps1           ← Restart-Loop (nodemon)
-│   └── Start-Frontend.bat
-│
-├── mac/                            ← macOS Start- & Installationsskripte
-│   ├── install.sh                  ← Node-Check (≥18), chmod +x, Gatekeeper-Hinweis
-│   ├── start-all.sh                ← Terminal.app + iTerm2 unterstützt
-│   └── start-backend.sh            ← Restart-Loop (bash while)
-│
-├── backend/
-│   ├── .env                        ← PORT, CORS_ORIGIN, FRONTEND_URL
-│   ├── data/                       ← JSON-Datenspeicher (nie überschreiben!)
-│   │   ├── customers.json
-│   │   ├── projects.json
-│   │   ├── documents.json
-│   │   ├── articles.json
-│   │   ├── counters.json           ← Atomare Nummernvergabe (BB-4)
-│   │   ├── fibu.json
-│   │   └── settings.json           ← Firmendaten, Rechtstexte, Nummernkreise
-│   ├── uploads/
-│   │   ├── logo/                   ← Firmenlogo (logo.png/jpg/svg)
-│   │   ├── contracts/              ← Unterschriebene Verträge
-│   │   └── receipts/               ← FiBu-Belege
-│   ├── backups/                    ← Automatische + manuelle Backups
+├── electron/           ← Electron Main + Preload (Desktop-Shell)
+│   ├── main.js         ← Fenster, IPC, PDF-Generierung
+│   └── preload.js      ← IPC-Bridge (window.pixframe)
+├── backend/            ← Express REST-API + SQLite
+│   ├── src/
+│   │   ├── database/   ← Schema, Migrations, Seeds
+│   │   ├── services/   ← Business-Logik (SQLite)
+│   │   ├── controllers/← HTTP-Adapter
+│   │   └── routes/     ← API-Routing
+│   └── server.js
+├── frontend/           ← Vue 3 SPA
 │   └── src/
-│       ├── config/
-│       │   ├── index.js            ← PORT, CORS, FRONTEND_URL
-│       │   └── paths.js            ← Zentrale Pfade (Win + Mac)
-│       ├── services/
-│       │   ├── pdfService.js       ← Puppeteer PDF-Engine
-│       │   ├── backupService.js    ← ZIP-Backup-System
-│       │   ├── updateService.js    ← ZIP-Update-System
-│       │   └── …
-│       └── utils/
-│           └── zipUtils.js         ← Plattformunabhängiges ZIP (kein Shell)
-│
-└── frontend/
-    └── src/
-        ├── pages/                  ← App-Seiten + Print-Views
-        ├── components/project/     ← 7 Pipeline-Sub-Komponenten
-        ├── stores/                 ← Pinia (5 Stores)
-        ├── services/
-        │   ├── api.js              ← API_BASE (einzige URL-Konstante)
-        │   └── pdfExport.js
-        └── styles/
-            ├── global.css
-            └── print-override.css  ← Globale @media print Overrides
+│       ├── pages/      ← App-Seiten + 9 Print-Views
+│       ├── components/ ← UI-Komponenten + 7 Pipeline-Steps
+│       ├── stores/     ← Pinia (5 Stores)
+│       ├── services/   ← API-Client, PDF-Export, ZUGFeRD
+│       └── styles/     ← Global CSS + Print-Overrides
+├── windows/            ← Windows Install/Start Scripts
+├── mac/                ← macOS Install/Start Scripts
+└── package.json        ← Root: Electron + concurrently + wait-on
 ```
-
----
-
-## Backend-Architektur
-
-| Schicht | Verantwortung |
-|---|---|
-| `routes/` | HTTP-Routing — nur Weiterleitung |
-| `controllers/` | HTTP-Adapter — Request/Response |
-| `services/` | Business-Logik |
-| `storage/` | JSON lesen/schreiben (atomar) |
-| `models/` | Datenmodelle mit Validierung |
-| `utils/` | Logger, ZIP |
-
----
-
-## PDF-Generierung (Puppeteer)
-
-Pixelgenaue A4-PDFs über Headless-Chrome.
-
-**Verfügbare Endpunkte:**
-
-| Endpunkt | Beschreibung |
-|---|---|
-| `GET /api/pdf/document/:id` | Rechnung / Angebot / Stornorechnung |
-| `GET /api/pdf/contract/:projectId` | Fotovertrag (Logo-Header) |
-| `GET /api/pdf/adv/:projectId` | ADV-Vertrag |
-| `GET /api/pdf/addendum/:pid/:aid` | Nachtrag |
-| `GET /api/pdf/agb` | AGB |
-| `GET /api/pdf/dsgvo` | Datenschutzerklärung |
-| `GET /api/pdf/adv-vertrag` | ADV-Standardvertrag |
-| `GET /api/pdf/ear/:year` | EÜR |
-| `GET /api/pdf/blank-contract` | Blanko-Vertrag |
-
----
-
-## Funktionsumfang (v1.0.0-beta.1)
-
-### Auftragsverwaltung
-7-Stufen-Pipeline: **Anfrage → Vorgespräch → Angebot** *(optional)* **→ Vertrag → Anzahlung → Abrechnung → Abschluss**
-
-- Mehrere Locations pro Auftrag (Trauung, Kirche, Hotel, Getting Ready …)
-- Mehrere Shooting-Termine pro Auftrag
-- B2B-Phasenkalkulator mit Rüstzeiten
-- Nutzungsrechte: Simple (MFM) + designaustria-Modell
-- Leistungs-Chips (Fotografie, Videografie, Getting Ready, Danksagungskarten)
-
-### Dokumente & Rechnungen (GoBD-konform)
-- Angebote, Anzahlungs- und Schlussrechnungen
-- Korrektur- (`KOR-`) und Stornorechnungen (`STORNO-`) mit Versionierung
-- Atomare Nummernvergabe (kein Duplikat-Risiko)
-- ZUGFeRD 2.3 XML-Export
-
-### FiBu
-- Einnahmen aus Rechnungen, Ausgaben mit Belegupload
-- Eingangsrechnungen (Lieferanten)
-- Fahrtenbuch mit automatischen Einträgen
-- EAR-Ausdruck als PDF, DATEV CSV-Export, iCal-Export
-
-### Konfiguration
-| Tab | Inhalt |
-|---|---|
-| 🏢 Studio | Firmendaten, Logo, Steuer, Bank |
-| 🔢 Nummernkreise | Token-basierte Schemas (`{jjjj}`, `{z,5}` …) |
-| 📋 Auftrag | Stundensätze, Zahlungsarten, Storno-Staffel, Kalender |
-| 📝 Rechtsdoks | Vertragswesen, AGB, DSGVO, ADV editierbar |
-| ✉️ E-Mail 🚧 | SMTP (in Entwicklung) |
-| 🎨 Darstellung | Theme, Schrift |
-| ⚙️ System | Backup (ZIP), Update (ZIP mit Manifest), Systeminfos |
-
----
-
-## API-Übersicht
-
-| Ressource | Methoden |
-|---|---|
-| Kunden | CRUD `/api/customers` |
-| Lieferanten | CRUD `/api/suppliers` |
-| Projekte | CRUD `/api/projects` |
-| Dokumente | CRUD + generate, revise, correct, cancel, status |
-| Artikel | CRUD `/api/articles` |
-| Einstellungen | GET/PUT + Logo-Upload |
-| FiBu | GET + CRUD Ausgaben, Fahrten, Eingangsrechnungen |
-| PDF | 9 GET-Endpunkte, Puppeteer-generiert |
-| Backup | list, create, restore, import, delete, download |
-| Update | preview, apply |
-| Feiertage | `GET /api/holidays/feiertage?states=MV&years=2026` |
 
 ---
 
 ## Tech-Stack
 
 | Bereich | Technologie |
-|---|---|
+|---------|-------------|
+| Desktop | Electron 30 |
 | Frontend | Vue 3, Pinia, Vue Router, Axios, Vite 4 |
-| Backend | Node.js ≥18, Express 4, nodemailer |
-| PDF | Puppeteer 22 (Headless-Chrome) |
-| ZIP | Node.js native + yauzl (kein Shell) |
-| Speicher | JSON-Dateien (→ SQLite → PostgreSQL geplant) |
+| Backend | Node.js 22 LTS, Express 4 |
+| Datenbank | SQLite (better-sqlite3), WAL-Mode |
+| PDF | Electron `printToPDF` (kein Puppeteer) |
+| ZIP | Node.js native + yauzl |
 
 ---
 
-## Konfiguration (`.env`)
+## Datenbank
 
-```env
-PORT=3001
-NODE_ENV=development
-CORS_ORIGIN=http://localhost:5173
-FRONTEND_URL=http://localhost:5173
-MAX_FILE_SIZE_MB=50
-```
+SQLite mit 15 Tabellen, WAL-Mode, Foreign Keys und Indizes. Beim ersten Start werden automatisch 17 Standardartikel angelegt (löschgeschützt).
+
+Beim Update von v1.0.x (JSON) wird eine einmalige Migration durchgeführt — die JSON-Originaldaten werden nach `data/_migrated_json/` archiviert.
 
 ---
 
-## Update einspielen
+## PDF-Generierung
 
-Updates via **Einstellungen → ⚙️ System → Update** als ZIP.
+Pixelgenaue A4-PDFs via Electron's `printToPDF` — kein Puppeteer, kein Chromium-Download.
 
-```
-update-v1.0.1.zip
-├── update-manifest.json    ← Pflicht: { version, title, date, changes[] }
-├── backend/src/…
-└── frontend/src/…
-```
+- Frontend ruft `window.pixframe.generatePDF('/api/pdf/...')` via IPC
+- Electron Main-Prozess erstellt unsichtbares BrowserWindow
+- Print-View wird geladen, CSS injiziert, `printToPDF` aufgerufen
+- PDF wird als Datei gespeichert — kein Druckdialog
 
-Geschützte Pfade werden nie überschrieben: `data/`, `uploads/`, `backups/`, `.env`
+**Verfügbare PDF-Endpunkte:**
+
+| Endpunkt | Beschreibung |
+|----------|-------------|
+| `/api/pdf/document/:id` | Rechnung / Angebot |
+| `/api/pdf/contract/:projectId` | Fotovertrag |
+| `/api/pdf/adv/:projectId` | ADV-Vertrag (Projekt) |
+| `/api/pdf/addendum/:pid/:aid` | Nachtrag |
+| `/api/pdf/agb` | AGB |
+| `/api/pdf/dsgvo` | Datenschutzerklärung |
+| `/api/pdf/adv-vertrag` | ADV-Standardvertrag |
+| `/api/pdf/ear/:year` | EÜR |
+| `/api/pdf/blank-contract` | Blanko-Vertrag |
+
+---
+
+## Funktionsumfang
+
+### Auftragsverwaltung
+7-Stufen-Pipeline: Anfrage → Vorgespräch → Angebot → Vertrag → Anzahlung → Abrechnung → Abschluss
+
+### Dokumente & Rechnungen (GoBD-konform)
+Angebote, Anzahlungs-/Schlussrechnungen, Korrektur-/Stornorechnungen, ZUGFeRD 2.3
+
+### FiBu
+Einnahmen, Ausgaben mit Beleg, Fahrtenbuch, EAR-PDF, DATEV CSV-Export
+
+### Konfiguration
+Firmendaten, Nummernkreise, Stundensätze, Rechtstexte (Vertrag, AGB, DSGVO, ADV), Theme
 
 ---
 
 ## Lizenz
 
-MIT — © Markus Emanuel
+MIT — © Victoria Elisabeth Emanuel

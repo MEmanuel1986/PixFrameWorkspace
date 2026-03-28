@@ -4,11 +4,11 @@
  * Globale Print-Regeln fuer alle 9 Print-Views.
  * Wird in main.js einmalig importiert.
  *
- * v1.1.0: Puppeteer entfernt. PDF-Generierung laeuft ueber Electron printToPDF.
+ * v1.1.0: PDF-Generierung via Electron printToPDF.
+ *   - .a4 BEHAELT sein Padding (= Seitenraender im PDF)
  *   - Footer (.print-page-footer / .pf) bleibt SICHTBAR (position:fixed)
  *   - Header (.page-header-logo) bleibt SICHTBAR
  *   - CSS-Counter (Seite X von Y) bleiben AKTIV
- *   - Electron setzt Seitenraender, .a4 padding wird auf 0 gesetzt
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
@@ -28,49 +28,58 @@
     margin:     0     !important;
   }
 
+  /* ─── A4: Raender per Padding (NICHT auf 0 setzen!) ─────────────────
+     Die Print-Views haben @media print { .a4 { padding: 0 } }
+     Das war fuer Puppeteer. Electron braucht die Raender im Content.
+     Wir ueberschreiben hier mit den gewuenschten Seitenraendern.
+  ──────────────────────────────────────────────────────────────────────── */
   .a4 {
     margin:        0    !important;
     box-shadow:    none !important;
     width:         100% !important;
     min-height:    0    !important;
-    padding:       0    !important;
+    padding:       14mm 18mm 30mm 18mm !important;
     background:    white !important;
   }
 
   .print-content {
-    padding:    0     !important;
-    min-height: 0     !important;
     margin:     0     !important;
     box-shadow: none  !important;
     width:      100%  !important;
     background: white !important;
   }
 
-  /* ─── Footer: SICHTBAR auf jeder Seite (position:fixed) ──────────────
-     Die Vue-Print-Views rendern den Footer mit Firmendaten.
-     position:fixed bewirkt im Print-Kontext Wiederholung auf jeder Seite.
-  ──────────────────────────────────────────────────────────────────────── */
+  /* ─── Footer: SICHTBAR auf jeder Seite (position:fixed) ──────────── */
   .print-page-footer {
     display:  block !important;
-    position: fixed;
-    bottom:   0;
-    left:     0;
-    right:    0;
+    position: fixed !important;
+    bottom:   0 !important;
+    left:     0 !important;
+    right:    0 !important;
+    padding:  0 18mm 5mm 18mm !important;
+    background: white !important;
   }
   .pf {
     display:  block !important;
-    position: fixed;
-    bottom:   0;
-    left:     0;
-    right:    0;
+    position: fixed !important;
+    bottom:   0 !important;
+    left:     0 !important;
+    right:    0 !important;
+    padding:  0 18mm 5mm 18mm !important;
+    background: white !important;
   }
 
   /* ─── Logo-Header: SICHTBAR ─────────────────────────────────────────── */
   .page-header-logo {
-    display: block !important;
+    display:  block !important;
+    position: fixed !important;
+    top:      0 !important;
+    right:    0 !important;
+    padding:  5mm 18mm 2mm !important;
+    background: white !important;
   }
 
-  /* ─── Seitenzahlen via CSS Counter (funktioniert in Chromium print) ── */
+  /* ─── Seitenzahlen via CSS Counter ──────────────────────────────────── */
   .pp-cur::before { content: counter(page) !important; }
   .pp-tot::before { content: counter(pages) !important; }
 
@@ -83,7 +92,6 @@
   h1, h2, h3, h4, h5 { break-after:  avoid !important; }
   p                   { orphans: 3; widows: 3; }
 
-  /* Kompakte Bloecke nicht aufteilen */
   .break-inside-avoid,
   .sig-block,
   .sig-grid,
@@ -105,4 +113,5 @@
 
   /* ─── UI-Elemente verstecken ────────────────────────────────────────── */
   .no-print { display: none !important; }
+  .screen-footer { display: none !important; }
 }

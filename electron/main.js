@@ -147,20 +147,79 @@ const MM_TO_INCH = 1 / 25.4;
 // CSS fuer PDF-Rendering (injiziert in die Print-Seite)
 const PDF_INJECT_CSS = `
   /* UI-Elemente verstecken */
-  .toolbar, .no-print, .print-hint, [data-no-print] {
+  .toolbar, .no-print, .print-hint, [data-no-print], .screen-footer {
     display: none !important;
   }
 
-  /* Electron-Margins uebernehmen - kein doppeltes Margin/Padding */
-  @page { margin: 0 !important; }
-  .a4 { padding: 0 !important; }
-  .page-wrap { padding: 0 !important; margin: 0 !important; }
-  .print-content { padding: 0 !important; margin: 0 !important; }
+  /* Hintergrund weiss */
+  html, body { background: white !important; margin: 0 !important; padding: 0 !important; }
 
-  /* Footer + Header SICHTBAR lassen (Vue rendert sie) */
-  .print-page-footer { display: block !important; }
-  .pf { display: block !important; }
-  .page-header-logo { display: block !important; }
+  /* Page-Wrapper zuruecksetzen */
+  .page-wrap { padding: 0 !important; margin: 0 !important; display: block !important; background: white !important; }
+
+  /* A4-Container: BEHAELT sein Padding (= Seitenraender) */
+  @page { margin: 0 !important; }
+  .a4 {
+    width: 100% !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    background: white !important;
+    padding: 14mm 18mm 30mm 18mm !important;
+  }
+
+  .print-content {
+    margin: 0 !important;
+    box-shadow: none !important;
+    width: 100% !important;
+    background: white !important;
+  }
+
+  /* Footer + Header SICHTBAR (Vue rendert sie mit position:fixed) */
+  .print-page-footer {
+    display: block !important;
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    padding: 0 18mm 5mm 18mm !important;
+    background: white !important;
+  }
+  .pf {
+    display: block !important;
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    padding: 0 18mm 5mm 18mm !important;
+    background: white !important;
+  }
+  .page-header-logo {
+    display: block !important;
+    position: fixed !important;
+    top: 0 !important;
+    right: 0 !important;
+    padding: 5mm 18mm 2mm !important;
+    background: white !important;
+  }
+
+  /* Seitenzahlen via CSS Counter */
+  .pp-cur::before { content: counter(page) !important; }
+  .pp-tot::before { content: counter(pages) !important; }
+
+  /* Tabellen-Seitenumbrueche */
+  thead { display: table-header-group !important; }
+  tfoot { display: table-footer-group !important; }
+  tr { break-inside: avoid !important; }
+  h1, h2, h3, h4, h5 { break-after: avoid !important; }
+  p { orphans: 3; widows: 3; }
+
+  .break-inside-avoid, .sig-block, .sig-grid, .party-block,
+  .parties-grid, .payment-block, .totals-section, .totals-table,
+  .infobox, .storno-table, .section {
+    break-inside: avoid !important;
+  }
+  .doc-title-block, .sh-row { break-after: avoid !important; }
 `;
 
 function resolvePrintPath(apiPath) {
@@ -208,16 +267,16 @@ async function generatePDF(apiPath) {
     await new Promise(r => setTimeout(r, 200));
 
     // PDF generieren mit Electron's printToPDF
-    // Margins in Zoll (inches) — Electron API erwartet inches
+    // Margins auf 0 — die .a4-Klasse steuert Raender per CSS padding
     const pdfBuffer = await win.webContents.printToPDF({
       pageSize: 'A4',
       printBackground: true,
       margins: {
         marginType: 'custom',
-        top:    14 * MM_TO_INCH,     // 14mm oben
-        bottom: 28 * MM_TO_INCH,     // 28mm unten (Platz fuer Footer)
-        left:   18 * MM_TO_INCH,     // 18mm links
-        right:  18 * MM_TO_INCH,     // 18mm rechts
+        top:    0,
+        bottom: 0,
+        left:   0,
+        right:  0,
       },
     });
 

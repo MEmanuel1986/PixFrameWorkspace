@@ -3,8 +3,8 @@
 
 ---
 
-## v1.1.0 — SQLite-Migration, Electron-Shell, Artikel-Seed-System
-*26. März 2026*
+## v1.1.0 — SQLite-Migration, Electron-Shell, Electron PDF-Engine
+*26.–28. März 2026*
 
 ### Datenbank: JSON → SQLite
 - Gesamte Datenhaltung von JSON-Dateien auf SQLite (better-sqlite3) migriert
@@ -37,16 +37,23 @@
 - Restore unterstützt v1 (JSON) und v2 (SQLite) Formate
 - Auto-Backup beim Serverstart
 
-### PDF-Service
-- Puppeteer wird lazy geladen (try/catch statt Top-Level require)
-- Server startet auch ohne Puppeteer — PDF-Export gibt klaren Fehler zurück
-- Puppeteer als optionalDependency statt harter Abhängigkeit
+### PDF-Engine: Puppeteer → Electron printToPDF
+- Puppeteer komplett entfernt (~150 MB Chromium-Download entfällt)
+- PDF-Generierung läuft über Electron IPC: Frontend → Main Process → verstecktes BrowserWindow → `printToPDF`
+- Alle 9 Print-Views haben jetzt sichtbare Toolbar mit "💾 PDF speichern" Button
+- Kein Druckdialog mehr — PDFs werden direkt als Datei gespeichert
+- Kopf-/Fußzeile werden von den Vue-Print-Views gerendert (position:fixed CSS)
+- Seitenzahlen via CSS `counter(page)` / `counter(pages)`
+- Auto-Trigger im Workflow (Vertrag verschicken etc.) speichert PDF direkt
+- Settings, FiBu und ProjectDetail rufen PDF via IPC statt `window.open()` — kein neues Fenster nötig
+- Neue Fenster erhalten automatisch das Preload-Script (Electron `setWindowOpenHandler`)
 
-### Bereinigung
-- `multer` Dependency entfernt (wurde nie verwendet)
-- `src/models/` und `src/storage/fileStorage.js` als Altlasten markiert (Cleanup-Script beiliegend)
-- `paths.js` Workspace-aware: PIXFRAME_WORKSPACE Env-Variable steuert Datenpfade
-- `vite.config.js`: `base: './'` für relative Asset-Pfade in Electron
+### Projekt-Bereinigung
+- `server.js`, `src/`-Ordner im Root entfernt (Duplikate aus ZIP-Overlay)
+- Legacy Update-System entfernt: `updateService.js`, `updateController.js`, `update.js`, `update-manifest.json`
+- `models/`, `storage/` Ordner entfernt (ersetzt durch SQLite)
+- `INTEGRATION_PLAN.md`, `README.txt`, `ROADMAP.txt` entfernt
+- `cleanup-project.ps1`, `project-files.txt` aus Repo entfernt
 
 ### Install-Scripts
 - Windows: BAT + PowerShell mit better-sqlite3 Build-Tool-Prüfung
@@ -55,7 +62,6 @@
 
 ### Bekannte Einschränkungen
 - holidayController schreibt noch direkt in JSON-Cache-Dateien (niedrige Priorität)
-- PDF-Export nutzt noch Puppeteer (wird durch Electron Print API ersetzt)
 - Node.js v22 LTS empfohlen (v24 hat keine better-sqlite3 Prebuilds)
 
 ---
@@ -329,7 +335,7 @@
 | **Beta-Release** | **v1.0.0-beta.1** | **23.03.2026** |
 | Druckränder-Fix | v1.0.1 | 24.03.2026 |
 | Kopf-/Fußzeile | v1.0.0-beta.2 | 25.03.2026 |
-| **SQLite + Electron** | **v1.1.0** | **26.03.2026** |
+| **SQLite + Electron + PDF** | **v1.1.0** | **26.–28.03.2026** |
 
 ---
 
