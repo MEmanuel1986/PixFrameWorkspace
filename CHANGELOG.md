@@ -1,41 +1,57 @@
-# PixFrameWorkspace — Vollständiges Changelog
-*Entwicklungsbeginn: 06. März 2026*
+## v1.1.1 — Hotfixes: Node.js v24, Passwort-Sicherheit, Installation
+*30. März 2026*
+
+### Bug-Fixes
+- ✅ **BUG-2:** Node.js v24 Kompatibilitätsprüfung in Installer-Skripten (Windows + macOS)
+  - Windows: `install.ps1` prüft `node -v` auf v24+ und bricht mit Fehlermeldung ab
+  - macOS: `install.sh` prüft Node-Version und empfiehlt Node.js v22 LTS
+  - Nutzer wird auf Download-Link verwiesen
+
+- ✅ **BUG-7:** Klartext-Passwort aus `backend/.env.example` entfernt
+  - Sicheres Beispiel mit Kommentaren für SQLite-Konfiguration
+  - Keine exponierten Zugangsdaten mehr
+
+- ✅ **BUG-3:** `cleanup-project.ps1` und `project-files.txt` bereits aus Repo entfernt (v1.1.0)
+
+- ✅ **BUG-5:** `multer` Dependency bereits entfernt (v1.1.0)
+
+- ✅ **BUG-6:** Versionsnummer im Health-Endpoint auf `1.1.0` aktualisiert
+
+### Installer-Verbesserungen
+- Node.js Versionscheck vor Installation
+- Klare Fehlermeldungen mit Lösungsvorschlägen
+- Verweis auf Node.js LTS (v22, v20)
+- Download-Link zum offiziellen Node.js-Repository
+
+### Bekannte verbleibende Bugs (für v1.2.0+)
+- BUG-1: `holidayController` JSON-Cache → SQLite
+- BUG-4: HTTP-Input-Validierung mit `zod`
 
 ---
 
-## v1.1.0 — SQLite-Migration, Electron-Shell, Electron PDF-Engine
+## v1.1.0 — Meilenstein: Electron + SQLite + printToPDF
 *26.–28. März 2026*
 
-### Datenbank: JSON → SQLite
-- Gesamte Datenhaltung von JSON-Dateien auf SQLite (better-sqlite3) migriert
-- 15-Tabellen-Schema mit WAL-Mode, Foreign Keys, Indizes
-- Einmalige JSON→SQLite Migration beim ersten Start (transaktional, mit Rollback-Schutz)
-- JSON-Originaldaten werden automatisch nach `data/_migrated_json/` archiviert
-- BaseRepository: Generische CRUD-Basis mit camelCase↔snake_case Konvertierung, Prepared-Statement-Cache, Spalten-Whitelist
-- Alle 9 Services (Customer, Article, Supplier, Project, Document, FiBu, Settings, Counter, Backup) auf SQLite umgestellt
-- Controller und Routes bleiben komplett unverändert (gleiche API)
+### Großmigrationen
+- **JSON → SQLite:** 15 Tabellen, WAL-Mode, Foreign Keys, atomare Transaktionen
+- **Browser-App → Electron Desktop:** macOS + Windows Unterstützung
+- **Puppeteer → Electron printToPDF:** PDF ohne externer Chromium-Download
 
-### Standardartikel-System
-- 17 Standardartikel werden beim DB-Init automatisch angelegt (Seed-System)
-- Standardartikel sind löschgeschützt (PROTECTED_ARTICLE_IDS)
-- Artikelpreise synchronisieren sich automatisch mit Einstellungen (bookingTerms)
-- ARTICLE_RATE_MAP: Zentrale Kopplung Artikel-ID → Settings-Feld
-- Kilometergutschtift (`art-km-minus`) wird automatisch als negativer Wert der Pauschale gesetzt
-- Manuell angelegte Artikel bleiben unberührt
+### Datenbankmigrationen
+- Customer, Project, Document, Settings, Articles, Tags
+- FiBu: Expenses, Mileage, ExternalInvoices
+- Accounting: VatRates, DocumentNumbers
+- System: AppVersion, BackupLog
+- WAL-Mode für Concurrency, Foreign Keys aktiviert
+- Atomic Writes für Datensicherheit
 
-### Electron Desktop-App
-- Vue-Frontend + Express-Backend in Electron-Shell gekapselt
-- Dev-Modus: Electron öffnet nur ein Fenster (kein Native-Module-Konflikt)
-- Prod-Modus: Express läuft im Electron-Prozess, Vue-Build wird ausgeliefert
-- Frei wählbarer Workspace-Ordner beim ersten Start (kein AppData-Zwang)
+### SQLite-Backup & Restore
+- `VACUUM INTO` für konsistente Backups ohne Sperren
+- Restore unterstützt v1 (JSON) und v2 (SQLite) Formate
+- Auto-Backup beim Server-Start
 - Workspace-Konfiguration persistent in Electron userData
 - IPC-Bridge für Workspace-Wechsel, App-Version, Native-Ordner-Öffnung
 - Graceful Shutdown: HTTP-Server + DB sauber schließen
-
-### Backup-System
-- SQLite-Backup via VACUUM INTO (konsistente Kopie ohne Sperren)
-- Restore unterstützt v1 (JSON) und v2 (SQLite) Formate
-- Auto-Backup beim Serverstart
 
 ### PDF-Engine: Puppeteer → Electron printToPDF
 - Puppeteer komplett entfernt (~150 MB Chromium-Download entfällt)
@@ -60,9 +76,21 @@
 - Mac: Bash mit Xcode CLI Tools Check
 - Cleanup-Scripts für Altlasten-Bereinigung (Windows + Mac)
 
+### Workspace-System
+- Picker beim ersten Start: Wähle existierenden Workspace oder erstelle neuen
+- Workspace-Daten in Electron userData (`~/Library/Application Support/pixframeworkspace/`)
+- IPC-Commands für Workspace-Operationen
+
+### Electron-Konfiguration
+- `electron-builder` für Windows + macOS Distribution
+- Signed DMG für macOS (notarized für Gatekeeper)
+- NSIS Installer für Windows (mit Uninstaller)
+- Menu-Bar mit App-Steuerung
+- Graceful Shutdown mit Datenbank-Close
+
 ### Bekannte Einschränkungen
-- holidayController schreibt noch direkt in JSON-Cache-Dateien (niedrige Priorität)
-- Node.js v22 LTS empfohlen (v24 hat keine better-sqlite3 Prebuilds)
+- `holidayController` schreibt noch direkt in JSON-Cache-Dateien (BUG-1)
+- Node.js v24 hat keine better-sqlite3 Prebuilds (BUG-2, behoben in v1.1.1)
 
 ---
 
