@@ -140,4 +140,4 @@ Firmendaten, Nummernkreise, Stundensätze, Rechtstexte (Vertrag, AGB, DSGVO, ADV
 
 ## Lizenz
 
-MIT — © Victoria Elisabeth Emanuel
+MIT — © Markus Emanuel
