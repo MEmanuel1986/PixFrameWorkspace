@@ -9,10 +9,12 @@
     "dev": "concurrently -n BE,FE,EL -c blue,green,magenta \"npm run dev:backend\" \"npm run dev:frontend\" \"npm run dev:electron\"",
     "dev:backend": "cd backend && node server.js",
     "dev:frontend": "cd frontend && npm run dev",
-    "dev:electron": "wait-on http://localhost:5173 http://localhost:3001/api/health && electron .",
+    "dev:electron": "node scripts/wait-and-start.js",
+    "dev:electron:direct": "electron .",
     "build:frontend": "cd frontend && npm run build",
     "build": "npm run build:frontend && electron-builder",
     "start": "electron .",
+    "check": "node scripts/check-services.js",
     "postinstall": "cd backend && npm install && cd ../frontend && npm install"
   },
   "dependencies": {

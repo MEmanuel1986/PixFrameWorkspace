@@ -22,6 +22,22 @@ const backupRoutes    = require('./routes/backup');
 
 const app = express();
 
+// ━━━ Local IP Detection ━━━
+function getLocalIP() {
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name]) {
+      // IPv4 und nicht loopback
+      if (iface.family === 'IPv4' && !iface.internal) {
+        return iface.address;
+      }
+    }
+  }
+  return '127.0.0.1';
+}
+
+const LOCAL_IP = getLocalIP();
+
 // ━━━ Middleware ━━━
 app.use(cors({ origin: config.CORS_ORIGIN }));
 app.use(express.json({ limit: '10mb' }));
@@ -46,13 +62,19 @@ app.use((req, res, next) => {
   next();
 });
 
-// ━━━ Health Check ━━━
+// ━━━ Health Check mit Network-Info ━━━
 app.get('/api/health', (req, res) => {
+  const backendPort = process.env.PORT || 3001;
   res.json({
     status: 'ok',
     app: config.APP_NAME,
     timestamp: new Date().toISOString(),
-    version: '1.1.0',
+    version: require('../../package.json').version,
+    network: {
+      host: LOCAL_IP,
+      port: backendPort,
+      url: `http://${LOCAL_IP}:${backendPort}`
+    }
   });
 });
 
