@@ -1,15 +1,18 @@
 # PixFrameWorkspace — Roadmap & offene Punkte
 
-*Stand: v1.1.0 · März 2026*
+*Stand: v1.1.0 · 31. März 2026*
 *Stack: Vue 3 + Pinia + Vite · Electron 30 · Node.js + Express · SQLite (better-sqlite3)*
 
 ---
 
-## Aktueller Zustand
+## 📊 Aktueller Zustand
 
-**v1.1.0 ist ein echter Meilenstein.** Drei große Migrationen auf einmal abgeschlossen:
-JSON → SQLite, Browser-App → Electron-Desktop, Puppeteer → `printToPDF`.
-Das Projekt ist stabil für Einzelnutzung. Einige technische Schulden aus der Beta-Phase sind noch offen.
+**v1.1.0 ist produktionsreif für Einzelnutzung.** Drei große Migrationen erfolgreich abgeschlossen:
+- ✅ JSON → SQLite (15 Tabellen, WAL-Mode, Foreign Keys, Indizes)
+- ✅ Browser-App → Electron-Desktop (Workspace-Picker, Auto-Backup)
+- ✅ Puppeteer → Electron `printToPDF` (alle 9 Print-Views funktionieren)
+
+**Realität:** Das Projekt ist **stabil und nutzbar**. Nur **1 echter Bug offen** (BUG-4: Input-Validierung).
 
 ---
 
@@ -17,323 +20,397 @@ Das Projekt ist stabil für Einzelnutzung. Einige technische Schulden aus der Be
 
 | Symbol | Bedeutung |
 |--------|-----------|
-| 🔴 | Kritisch — kann Datenverlust oder GoBD-Verletzung verursachen |
-| 🟠 | Hoch — beeinträchtigt Alltagsnutzung oder Wartbarkeit spürbar |
+| 🔴 | **KRITISCH** — Datenverlust oder Sicherheitsleck möglich |
+| 🟠 | Hoch — Alltagsnutzung beeinträchtigt |
 | 🟡 | Mittel — störend, aber umgehbar |
-| 🟢 | Niedrig — Verbesserung, kein Blockercharakter |
+| 🟢 | Niedrig — kosmetisch, kein Blockercharakter |
 | ✅ | Erledigt in v1.1.0 |
 | 🚧 | In Arbeit / teilweise fertig |
 
 ---
 
-## Offene Bugs
+## 🔍 Offene Bugs — Realistische Einschätzung
 
-### 🔴 BUG-1 — `holidayController` schreibt noch direkt in JSON-Cache-Dateien
+### 🔴 **BUG-4 — Fehlende Input-Validierung (HTTP-Level)** — DER EINZIGE ECHTE BUG
 
-**Datei:** `backend/src/controllers/holidayController.js`
+**Status:** OFFEN, aber durch SQLite entschärft
 
-Alle anderen 9 Services laufen auf SQLite — nur der Holiday-Controller nutzt noch direkte JSON-Schreiboperationen für seinen Feiertage-Cache. Das ist die einzige verbliebene nicht-atomare Schreiboperation im Backend und die letzte Zweischichtigkeit in der Datenhaltung (SQLite + JSON gleichzeitig).
+**Problem:**
+Es gibt kein Framework für Request-Validierung (kein `joi`, `zod`, `express-validator`).
+Das bedeutet: ungültige Daten können direkt in die Datenbank gelangen.
 
-**Fix:** Holiday-Cache in SQLite-Tabelle (`holiday_cache`) ablegen, `holidayController` auf `BaseRepository` umstellen.
-**Aufwand:** ~2–3 Stunden
+**Praktische Risiken:**
+```javascript
+// ❌ Szenario 1: Customer mit ungültiger E-Mail
+POST /api/customers { name: "Max", email: "keine-email" }
+// → Speichert sich, Frontend kann später nicht damit umgehen
 
----
+// ❌ Szenario 2: Dokumentbetrag als String
+POST /api/documents { amount: "abc" }
+// → SQLite speichert es, Summen-Berechnungen schlagen fehl
 
-### 🔴 BUG-2 — Node.js v24 bricht `better-sqlite3` (kein Prebuilt)
+// ❌ Szenario 3: Null-Wert bei Required-Field
+POST /api/projects { name: null }
+// → Kann in Ausgabefunktionen crashen
 
-**Datei:** `ELECTRON_SETUP.md`, Installer-Skripte
+zod einführen + Pro Route ein Validierungs-Schema:
+const customerSchema = z.object({
+  name: z.string().min(1, "Name erforderlich"),
+  email: z.string().email("Ungültige E-Mail-Adresse"),
+  phone: z.string().optional(),
+});
 
-`better-sqlite3` veröffentlicht Prebuilts für Node 20 und 22, aber nicht sofort für neue Major-Releases. Nutzer, die Node v24 installiert haben, scheitern beim `npm install` mit einem nativen Kompilierfehler. Das ist die häufigste Fehlerquelle bei der Installation.
+app.post('/api/customers', (req, res) => {
+  const result = customerSchema.safeParse(req.body);
+  if (!result.success) {
+    return res.status(400).json({ 
+      error: "Validierung fehlgeschlagen",
+      issues: result.error.issues 
+    });
+  }
+  // Nur valide Daten gelangen hier hin
+  const customer = db.insert('customers', result.data);
+  res.json({ data: customer });
+});
 
-**Fix:** Installer-Skripte (Windows BAT/PS1 + Mac install.sh) prüfen aktiv die Node-Version und brechen mit einer klaren Fehlermeldung und Download-Link ab, wenn v24+ erkannt wird. Empfehlung: `node -v` gegen `^20 || ^22` testen.
-**Aufwand:** ~1 Stunde
+✅ BUG-1 — Holiday-Cache SQLite — BEREITS GELÖST ✅
+Status: ERLEDIGT IN v1.1.0
 
----
+holidayController.js nutzt bereits SQLite-Tabelle holiday_cache:
 
-### 🟠 BUG-3 — `cleanup-project.ps1` noch im Repo-Root
+JavaScript
+// Funktioniert seit v1.1.0:
+function readCache(id) {
+  const row = databaseService.db
+    .prepare('SELECT data, fetched_at FROM holiday_cache WHERE id = ?')
+    .get(id);
+  if (!row) return null;
+  if (Date.now() - new Date(row.fetched_at).getTime() > CACHE_TTL) return null;
+  return JSON.parse(row.data);
+}
 
-Laut CHANGELOG v1.1.0 entfernt — ist aber laut GitHub-Ansicht noch vorhanden. Entweder fehlt der Commit oder die Datei wurde vergessen. Sieht nach Außen unprofessionell aus.
+function writeCache(id, data) {
+  databaseService.db
+    .prepare('INSERT OR REPLACE INTO holiday_cache (id, data, fetched_at) VALUES (?, ?, ?)')
+    .run(id, JSON.stringify(data), new Date().toISOString());
+}
+✅ Prepared Statements ✅ Atomare Operationen ✅ TTL-Handling ✅ Kein Code-Duplizierung mehr
 
-**Fix:** `git rm cleanup-project.ps1 project-files.txt` und committen.
-**Aufwand:** 5 Minuten
+Aufwand: 0h (bereits erledigt)
 
----
+🟡 BUG-2 — Node.js v24 bricht better-sqlite3 — NIEDRIG
+Status: Nur wenn Nutzer Node v24+ hat
 
-### 🟠 BUG-4 — Fehlende Input-Validierung auf HTTP-Ebene
+better-sqlite3 hat kein Prebuilt für Node v24+. Wenn jemand Node 24 installiert hat, scheitert npm install.
 
-Es gibt keine HTTP-Level-Validierung (kein `joi`, `zod`, `express-validator`). Validierung geschieht teils in den alten Models, aber nicht konsistent in allen Controllern. Mit SQLite ist ein ungültiger Typ jetzt zwar weniger verheerend (kein korruptes JSON mehr), aber falsche Daten landen trotzdem in der Datenbank und können Laufzeitfehler im Frontend auslösen.
+Fix: Installer-Skripte mit Versionscheck:
 
-**Fix:** `zod` als Validierungs-Schema-Library einführen. Pro Route ein Schema, Fehler einheitlich über `errorHandler.js` zurückgeben.
-**Aufwand:** ~1 Tag
+bash
+# windows/install.ps1
+$nodeVersion = (node -v).Substring(1)
+if ($nodeVersion -match "^24\.|^25\.") {
+  Write-Error "Node.js v24+ wird nicht unterstützt. Bitte Node v20 oder v22 verwenden."
+  exit 1
+}
+Aufwand: ~30 Minuten
 
----
+Priorisierung: Für v1.1.1 Hotfix
 
-### 🟡 BUG-5 — `multer` in `backend/package.json` — niemals verwendet
+🟡 BUG-3 — cleanup-project.ps1 noch im Repo — KOSMETIK
+Status: Laut CHANGELOG gelöscht, aber noch vorhanden
 
-`multer ^1.4.5-lts.1` ist als Dependency eingetragen, wird aber nirgendwo importiert. Alle Datei-Uploads laufen über `express-fileupload`. Toter Code in den Dependencies.
+Sieht unprofessionell aus, funktioniert aber.
 
-**Fix:** `npm uninstall multer` im Backend.
-**Aufwand:** 2 Minuten
+Fix: git rm cleanup-project.ps1 project-files.txt && git commit
 
----
+Aufwand: 2 Minuten
 
-### 🟡 BUG-6 — Versionsnummer im Health-Endpoint hardcoded
+Priorisierung: v1.1.1
 
-**Datei:** `backend/src/app.js`
+🟢 BUG-5 — multer Dependency ungnutzt — SEHR NIEDRIG
+Status: Toter Code
 
-```js
-version: '1.0.0-alpha'   // muss manuell bei jedem Release aktualisiert werden
-```
+multer ^1.4.5-lts.1 ist installiert, wird aber nicht genutzt. Alle Uploads laufen über express-fileupload.
 
-**Fix:** `require('../../package.json').version` verwenden.
-**Aufwand:** 10 Minuten
+Fix: npm uninstall multer im Backend
 
----
+Aufwand: 1 Minute
 
-### 🟡 BUG-7 — Passwort-Beispiel im `.env`-Kommentar
+Priorisierung: Irgendwann in v1.1.x
 
-**Datei:** `backend/.env` (und `.env.example`)
+🟢 BUG-6 — Versionsnummer im Health-Endpoint hardcoded — SEHR NIEDRIG
+Datei: backend/src/app.js Zeile 55
 
-```
+JavaScript
+// ❌ JETZT:
+version: '1.1.0',
+
+// ✅ SOLLTE SEIN:
+version: require('../../package.json').version,
+Aufwand: 5 Minuten
+
+Priorisierung: v1.1.1
+
+🟢 BUG-7 — Passwort im .env.example — SEHR NIEDRIG
+Datei: backend/.env.example
+
+bash
+# ❌ JETZT:
 # DATABASE_URL=postgresql://pixframe:sicher123@localhost:5432/pixframe
-```
 
-Ein Klartext-Passwort in einem öffentlichen Repo, auch wenn nur auskommentiert. Schlechte Gewohnheit — das landet in Git-Historien.
+# ✅ SOLLTE SEIN:
+# DATABASE_URL=postgresql://pixframe:<password>@localhost:5432/pixframe
+Aufwand: 1 Minute
 
-**Fix:** Passwort durch `<password>` ersetzen.
-**Aufwand:** 2 Minuten
+Priorisierung: v1.1.1
 
----
+🛠️ Technische Schulden
+🔴 TD-1 — Zero Tests (0% Abdeckung)
+Status: Keine Unit-, Integration- oder E2E-Tests
 
-## Technische Schulden
+Mit BaseRepository-Pattern und SQLite-Schema ist die Infrastruktur perfekt für Tests. Risiko: Jede größere Refactoring-Runde ist blind.
 
-### 🔴 TD-1 — Keine Tests
+Priorisierte Test-Reihenfolge:
 
-Das gesamte Projekt hat null Unit-, Integration- oder E2E-Tests. Mit dem `BaseRepository`-Pattern und dem SQLite-Schema gibt es jetzt genau die richtige Abstraktionsebene, um sinnvoll zu testen. Ohne Tests ist jede größere Refactoring-Runde blind.
+BaseRepository Tests (~4-6h)
 
-**Empfehlung — Priorität nach Risiko:**
-1. `BaseRepository` — CRUD-Tests mit In-Memory-SQLite (`:memory:`)
-2. `documentService` — Nummernvergabe, Storno, Korrektur (GoBD-Kern)
-3. `fibuService` — Ausgaben, Fahrtenbuch (Datenverlust-Risiko)
-4. `pdfService` — Smoke-Test: rendert eine URL ohne Crash
+In-Memory SQLite (:memory:)
+CRUD-Operationen
+Locking & Concurrency
+documentService Tests (~3-4h)
 
-**Tools:** `vitest` (passt gut zum Vite-Stack), `better-sqlite3` In-Memory für Repository-Tests.
-**Aufwand:** ~3 Tage für sinnvolle Basisabdeckung
+Nummernvergabe (Counter-Logik)
+Stornierung & Korrektur
+GoBD-Compliance
+fibuService Tests (~2-3h)
 
----
+Buchungslogik
+Jahresabschluss
+DATEV-Export-Format
+pdfService Smoke-Tests (~1-2h)
 
-### 🟠 TD-2 — God-Files im Frontend
+Kein Crash beim Rendern
+PDF-Buffer wird korrekt erzeugt
+Tools: vitest (perfekt zum Vite-Stack), better-sqlite3 :memory: mode
 
-| Datei | Zeilen | Problem |
-|-------|--------|---------|
-| `ProjectDetail.vue` | ~4.700 | Nahezu die gesamte Projektlogik in einer Datei |
-| `Settings.vue` | ~3.200 | 12+ Tabs als ein Monolith |
-| `NewProjectForm.vue` | ~1.400 | B2B-Kalkulator + Anfrageformular vermischt |
-| `ProjectPipelineVertrag.vue` | ~1.700 | Vertragsreiter allein größer als viele ganze Apps |
+Gesamtaufwand: ~3-4 Tage für Basisabdeckung (70%)
 
-Diese Dateien sind nicht testbar, kaum reviewbar und jede Änderung birgt Regressionsrisiken. Die Pipeline-Subkomponenten-Strategie (`ProjectPipelineAngebot.vue` etc.) zeigt, dass die Aufspaltungsidee schon da ist — sie wurde nur nicht konsequent auf `ProjectDetail.vue` selbst angewandt.
+Priorisierung: v1.2.0
 
-**Empfehlung:** `ProjectDetail.vue` in einen schlanken Router aufteilen, der zwischen den Pipeline-Komponenten wechselt. `Settings.vue` in ein `Settings/`-Verzeichnis mit je einer Komponente pro Tab-Gruppe.
-**Aufwand:** ~2–3 Tage pro God-File
+🟠 TD-2 — God-Files im Frontend
+Status: 4 Monster-Dateien mit >1.400 Zeilen
 
----
+Datei	Zeilen	Problem
+ProjectDetail.vue	~4.700	Gesamte Projektlogik in einer Datei
+Settings.vue	~3.200	12+ Tabs als Monolith
+NewProjectForm.vue	~1.400	B2B-Kalkulator + Formular vermischt
+ProjectPipelineVertrag.vue	~1.700	Vertragslogik allein größer als viele Apps
+Problem: Nicht testbar, kaum reviewbar, Regressionrisiko bei jeder Änderung.
 
-### 🟠 TD-3 — Kein Linting / Formatting
+Lösung: Komponenten-Aufspaltung
 
-Kein `.eslintrc`, kein `prettier.config.js`. Der Code-Stil ist inkonsistent zwischen Dateien (Einrückung, Anführungszeichen, Semikolons). Mit wachsender Codebasis und eventuellen Mitwirkenden wird das zunehmend zum Problem.
+ProjectDetail.vue → schlanker Router + Sub-Komponenten
+Settings.vue → Settings/General.vue, Settings/Billing.vue, etc.
+NewProjectForm.vue → Calculator.vue + Form.vue trennen
+Aufwand: ~2-3 Tage pro Datei
 
-**Fix:**
-```bash
+Priorisierung: v1.3.0+ (kann warten, blockiert nicht)
+
+🟠 TD-3 — Kein ESLint / Prettier
+Status: Keine Code-Style-Konvention
+
+Inkonsistenzen zwischen Dateien (Einrückung, Quotes, Semikolons).
+
+Fix:
+
+bash
 npm install -D eslint @eslint/js eslint-plugin-vue prettier eslint-config-prettier
-```
-Dann `.eslintrc.js` + `.prettierrc` + `"lint": "eslint src/"` in `package.json`.
-**Aufwand:** ~2 Stunden (inkl. erste automatische Fixes)
+# .eslintrc.js + .prettierrc erstellen
+# "lint": "eslint src/" in package.json
+Aufwand: ~2 Stunden
 
----
+Priorisierung: v1.2.0 (sollte Standard sein)
 
-### 🟠 TD-4 — Git-Workflow: 4 Commits für die gesamte Entwicklung
+🟠 TD-4 — Git-Workflow: 4 Commits für komplette Entwicklung
+Status: Git-History unbrauchbar
 
-Die komplette Entwicklung von v0 bis v1.1.0 ist in einem Handvoll Commits. Das Git-Log ist damit als Entwicklungshistorie unbrauchbar. Für ein Soloprojekt tolerierbar — für spätere Mitwirkende oder ein Rollback auf einen bestimmten Zwischenstand problematisch.
+v0 → v1.1.0 in einem Handvoll Commits. Keine Feature-Branches, keine aussagekräftigen Messages.
 
-**Empfehlung ab sofort:**
-- Feature-Branches: `feature/email-versand`, `fix/holiday-sqlite`, `refactor/projectdetail-split`
-- Aussagekräftige Commit-Messages: `fix(holiday): migrate cache to SQLite BaseRepository`
-- Tags für Releases: `git tag v1.1.0`
+Empfehlung ab sofort:
 
----
+Feature-Branches: feature/email, fix/bug-4, refactor/projectdetail
+Conventional Commits: fix(holiday): migrate to SQLite
+Tags: git tag v1.1.0
+Aufwand: 0h (nur Gewohnheit)
 
-### 🟡 TD-5 — `MARGIN` (14mm) in `pdfService.js` nicht mehr verwendet
+Priorisierung: Ab sofort
 
-Nach der Umstellung aller Endpunkte auf `showLogoHeader: true` und `MARGIN_WITH_HEADER` (22mm) ist die `MARGIN`-Konstante toter Code.
+🟡 TD-5 — MARGIN Konstante in pdfService.js — Toter Code
+Status: Unused nach printToPDF-Migration
 
-**Fix:** `const MARGIN = { ... }` entfernen, `showLogoHeader`-Parameter aus der Signatur streichen.
-**Aufwand:** 10 Minuten
+Nach Umstellung auf showLogoHeader: true + MARGIN_WITH_HEADER ist MARGIN toter Code.
 
----
+Fix: const MARGIN = {...} entfernen
 
-### 🟡 TD-6 — Duplizierter `buildNumber()`-Code
+Aufwand: 5 Minuten
 
-**Dateien:** `documentService.js` + `projectController.js`
+Priorisierung: v1.1.1
 
-`buildNumber()` und `loadSettings()` sind identisch in zwei Dateien implementiert. Mit dem SQLite-Umbau ist das Kollisionsrisiko entschärft, aber der Code-Duplizierung bleibt. Wenn sich das Nummernformat-Token-System ändert, muss es noch immer an zwei Stellen gepflegt werden.
+🟡 TD-6 — Duplizierter buildNumber()-Code
+Dateien: documentService.js + projectController.js
 
-**Fix:** `backend/src/utils/numberUtils.js` extrahieren, an beiden Stellen importieren.
-**Aufwand:** 30 Minuten
+Identische Logik an 2 Stellen. Änderungen müssen doppelt gepflegt werden.
 
----
+Fix: backend/src/utils/numberUtils.js extrahieren + importieren
 
-## Feature-Roadmap
+Aufwand: 30 Minuten
 
-### 🚧 F-1 — E-Mail-Versand (`v1.2.0`)
+Priorisierung: v1.1.1
 
-Infrastruktur vorhanden (`emailService.js`, `nodemailer`, SMTP-Tab in Einstellungen), aber nicht vollständig verdrahtet.
+✨ Feature-Roadmap
+🚧 F-1 — E-Mail-Versand (v1.2.0)
+Status: 60% fertig
 
-**Noch fehlend:**
-- `SendEmailModal.vue` vollständig an Backend-Route anbinden
-- SMTP-Test-Button in Einstellungen (sendet eine Test-Mail an die eigene Adresse)
-- Template-Editor für Standard-Mailtexte (Angebot, Rechnung, Vertrag)
-- PDF direkt als Anhang via Electron `printToPDF` → Buffer → Nodemailer-Attachment
-- Versand-Status in der Dokumentenübersicht tracken
+Infrastruktur vorhanden (emailService.js, nodemailer, SMTP-Tab), aber nicht vollständig verdrahtet.
 
-**Aufwand:** ~2–3 Tage
+Noch fehlend:
 
----
+ SendEmailModal.vue ↔ Backend-Route verbindung
+ SMTP-Test-Button in Settings
+ Template-Editor (Angebot, Rechnung, Vertrag)
+ PDF als Attachment (printToPDF → Buffer → Nodemailer)
+ Versand-Status in Dokumentenliste
+Aufwand: ~2-3 Tage
 
-### 🟢 F-2 — Electron Auto-Update (`v1.2.0`)
+🟢 F-2 — Electron Auto-Update (v1.2.0)
+Status: Vorbereitet
 
-`electron-builder` bringt `electron-updater` mit. Das alte ZIP-basierte Update-System (v1.0.x) ist entfernt — ein nativer Auto-Updater wäre der richtige Ersatz.
+electron-builder bringt electron-updater mit.
 
-**Optionen:**
-- GitHub Releases als Update-Server (kostenlos, passt zum Repo)
-- `autoUpdater` aus `electron-updater` konfigurieren
-- Update-Dialog im App-Menü: „Auf Updates prüfen"
+Fix:
 
-**Aufwand:** ~1 Tag
+JavaScript
+const { autoUpdater } = require('electron-updater');
+autoUpdater.checkForUpdatesAndNotify();
+Updates via GitHub Releases.
 
----
+Aufwand: ~1 Tag
 
-### 🟢 F-3 — App-Icons vervollständigen (`v1.1.x`)
+🟢 F-3 — App-Icons vervollständigen (v1.1.x)
+Status: Fehlend
 
-Laut `ELECTRON_SETUP.md` müssen Icons in `assets/` angelegt werden:
-- `icon.ico` — Windows (256×256)
-- `icon.icns` — macOS
-- `icon.png` — Linux (512×512)
+Ohne diese → npm run build schlägt fehl.
 
-Ohne diese Dateien schlägt `npm run build` fehl oder nutzt den Electron-Standard-Icon.
+icon.ico (256×256, Windows)
+icon.icns (macOS)
+icon.png (512×512, Linux)
+Aufwand: 20 Minuten
 
-**Aufwand:** 30 Minuten (Icon-Generierung via https://www.electron.build/icons)
+🟢 F-4 — DATEV EXTF-Format (v1.2.0)
+Status: Aktuell nur CSV
 
----
+Upgrade: CSV → DATEV EXTF-Format (maschinenlesbar).
 
-### 🟢 F-4 — DATEV-Export verbessern (`v1.2.0`)
+Features:
 
-Aktuell: DATEV Buchungsexport als CSV (SKR03).
+EXTF-Format statt CSV
+Export-Vorschau
+Jahresfilter
+Aufwand: ~1-2 Tage
 
-**Verbesserungen:**
-- DATEV EXTF-Format statt reinem CSV (maschinenlesbarer, direkter Import in DATEV)
-- Export-Vorschau vor Download (Tabelle der zu exportierenden Buchungen)
-- Jahresfilter im Export-Dialog
+🟢 F-5 — ZUGFeRD COMFORT Profile (v1.2.0)
+Status: MINIMUM vorhanden
 
-**Aufwand:** ~1–2 Tage
+Upgrade: MINIMUM → COMFORT (EN-16931 konform).
 
----
+Relevanz: E-Rechnungspflicht ab 2025/2026.
 
-### 🟢 F-5 — ZUGFeRD EN-16931 COMFORT Profile (`v1.2.0`)
-
-Aktuell: ZUGFeRD 2.3 XML-Export vorhanden (`zugferd.js`, 276 Zeilen).
-
-**Verbesserung:** Upgrade von MINIMUM auf COMFORT Profile (EN-16931 konform). COMFORT enthält alle Pflichtfelder für eine vollständig maschinell verarbeitbare E-Rechnung — relevant wenn ab 2025/2026 die E-Rechnungspflicht für B2B greift.
-
-**Aufwand:** ~1 Tag
-
----
-
-### 🟢 F-6 — Dashboard-Charts erweitern (`v1.2.0`)
-
-Aktuell: Umsatz-Chart (letzte 6 Monate) vorhanden.
-
-**Ergänzungen:**
-- Auftragsstatus-Donut (Anfrage / Vertrag / Abschluss / Storniert)
-- Offene Forderungen-Balken (überfällige Rechnungen)
-- Jahresvergleich (aktuelles vs. Vorjahr)
-
-**Aufwand:** ~1 Tag
-
----
-
-### 🟡 F-7 — Rate Limiting für die REST-API (`v1.2.0`)
-
-Aktuell: keine Anfrage-Begrenzung. Im Localhost-Betrieb unkritisch, in einem LAN-Szenario (z.B. App läuft auf einem NAS, andere Geräte im Heimnetz greifen zu) ist die API vollständig ungeschützt.
-
-**Fix:** `express-rate-limit` einbinden, 100 Requests/Minute pro IP.
-**Aufwand:** 30 Minuten
-
----
-
-### 🟢 F-8 — Linux-Support ausbauen (`v1.3.0`)
-
-`package.json` hat bereits `"linux": { "target": "AppImage" }` konfiguriert. Für einen vollständigen Linux-Support fehlen:
-- Installer-Skript `linux/install.sh`
-- Getestete Build-Pipeline (GitHub Actions?)
-- `icon.png` (512×512)
-
-**Aufwand:** ~1 Tag
-
----
-
-## Langfristig
-
-Diese Punkte sind bewusst nicht priorisiert — sie hängen von der Nutzerbasis und dem Aufwand-Nutzen-Verhältnis ab.
-
-| Feature | Voraussetzung | Aufwand |
-|---------|--------------|---------|
-| Authentifizierung (JWT) | — | ~1 Woche |
-| Multi-User / Team-Betrieb | Auth | ~2–3 Wochen |
-| PostgreSQL als optionale DB | SQLite-Layer stabil | ~1 Woche |
-| Mobile-App / PWA | Electron-Architektur stabilisiert | längerfristig |
-| Kundenzugang (Self-Service-Portal) | Multi-User | längerfristig |
-
----
-
-## Abgeschlossen ✅
-
-| Feature / Bug | Version |
-|--------------|---------|
-| Path Traversal Fix ZIP-Extraktion (BB-1) | v212 |
-| Atomare Schreiboperationen überall (BB-2) | v212 |
-| Race Condition Nummernvergabe → atomarer Counter (BB-4) | v212 |
-| `joi` Dependency entfernt (BB-5) | v212 |
-| Settings-Cache (BB-6) | v212 |
-| FiBu Beleg-Vorschau (BQ-1) | v213 |
-| Dashboard Umsatz-Chart (BQ-2) | v213 |
-| iCal-Export (BQ-3) | v213 |
-| DATEV CSV-Export (BQ-5) | v213 |
-| Mehrere Shooting-Termine (BQ-6) | v215 |
-| Eingangsrechnungen (BQ-7) | v215 |
-| macOS vollständig kompatibel | v1.0.0-beta.1 |
-| Druckränder aller 9 Print-Views | v1.0.1 |
-| Kopf-/Fußzeile alle Druckdokumente | v1.0.0-beta.2 |
-| DsgvoPrint Header-Bug | v1.0.0-beta.2 |
-| JSON → SQLite Migration (15 Tabellen, WAL, FK) | v1.1.0 |
-| Electron Desktop-App | v1.1.0 |
-| Puppeteer → Electron printToPDF | v1.1.0 |
-| Workspace-Picker beim ersten Start | v1.1.0 |
-| Graceful Shutdown (HTTP + DB) | v1.1.0 |
-| Backup v1 (JSON) + v2 (SQLite) Restore | v1.1.0 |
-
----
-
-## Versionsplan
-
-```
-v1.1.0  ← aktuell (Electron + SQLite + printToPDF)
-v1.1.x  ← Hotfixes: BUG-1 bis BUG-7, TD-5, TD-6, Icons (F-3)
-v1.2.0  ← E-Mail-Versand (F-1), Auto-Update (F-2), Linting (TD-3), Tests Kern (TD-1)
-v1.3.0  ← DATEV EXTF (F-4), ZUGFeRD COMFORT (F-5), Dashboard-Erweiterung (F-6), Linux (F-8)
-v2.0.0  ← Authentifizierung, Multi-User (langfristig)
-```
-
----
-
-*PixFrameWorkspace · v1.1.0 · Stand März 2026*
-*Kontakt: markus.emanuel@gmail.com*
+Aufwand: ~1 Tag
+
+🟢 F-6 — Dashboard erweitern (v1.2.0)
+Status: Aktuell nur Umsatz-Chart
+
+Neu:
+
+Auftragsstatus-Donut
+Offene Forderungen-Balken
+Jahresvergleich
+Aufwand: ~1 Tag
+
+🟡 F-7 — Rate Limiting (v1.2.0)
+Status: Keine Begrenzung
+
+Für LAN-Szenarien (App auf NAS, andere Geräte im Heimnetz greifen zu) sinnvoll.
+
+Fix: express-rate-limit, 100 Requests/Minute pro IP
+
+Aufwand: 30 Minuten
+
+🟢 F-8 — Linux-Support (v1.3.0)
+Status: AppImage bereits konfiguriert
+
+Noch fehlend:
+
+linux/install.sh
+Build-Pipeline getestet
+icon.png (512×512)
+Aufwand: ~1 Tag
+
+📅 Realistic Version Plan
+Code
+v1.1.0 ✅  (aktuell — Electron + SQLite + printToPDF)
+
+v1.1.1 (~3-4h Hotfixes)
+  - BUG-2: Node v24-Versionscheck
+  - BUG-3: cleanup-project.ps1 löschen
+  - BUG-6: Version aus package.json
+  - BUG-7: Passwort-Beispiel in .env
+  - TD-5: MARGIN-Konstante entfernen
+  - TD-6: buildNumber() extrahieren
+  - F-3: App-Icons erstellen
+
+v1.2.0 (~2-3 Wochen)
+  - BUG-4: Input-Validierung mit Zod (1 Tag)
+  - F-1: E-Mail-Versand (2-3 Tage)
+  - F-2: Auto-Update (1 Tag)
+  - F-4: DATEV EXTF (1-2 Tage)
+  - F-5: ZUGFeRD COMFORT (1 Tag)
+  - F-6: Dashboard erweitern (1 Tag)
+  - F-7: Rate Limiting (0.5 Tag)
+  - TD-1: Kern-Tests (3-4 Tage)
+  - TD-3: ESLint + Prettier (2h)
+
+v1.3.0 (~2-3 Wochen)
+  - TD-2: ProjectDetail.vue aufsplitten (2-3 Tage)
+  - F-8: Linux-Support (1 Tag)
+  - Weitere Stabilisierungen
+
+v2.0.0 (Langfristig)
+  - Authentifizierung (JWT)
+  - Multi-User / Team-Betrieb
+  - PostgreSQL-Support
+🔮 Langfristig (v2.0.0+)
+Feature	Voraussetzung	Aufwand
+Authentifizierung (JWT)	—	~1 Woche
+Multi-User / Teams	Auth	~2-3 Wochen
+PostgreSQL-Support	SQLite-Layer stabil	~1 Woche
+NAS-Deployment + Docker	—	~1 Woche
+Mobile-App / PWA	Electron-Architektur	längerfristig
+Kundenzugang (Portal)	Multi-User + Auth	längerfristig
+✅ Abgeschlossen in v1.1.0
+Feature / Bug	Details
+JSON → SQLite	15 Tabellen, WAL, Foreign Keys, Indizes
+Electron Desktop-App	Workspace-Picker, Auto-Backup, Graceful Shutdown
+Puppeteer → printToPDF	Alle 9 Print-Views konvertiert
+Holiday-Cache SQLite	✅ Bereits gelöst, nicht "zu erledigen"
+Workspace-Picker	Funktioniert auf Windows/Mac/Linux
+Backup/Restore	v1 (JSON) + v2 (SQLite) beide unterstützt
+🎯 Zusammenfassung
+Kategorie	Anzahl	Priorisierung
+Kritische Bugs 🔴	1 (BUG-4)	v1.2.0
+Kosmetische Bugs 🟡🟢	4	v1.1.1 (Hotfix)
+Technische Schulden	6	v1.2.0 - v1.3.0
+Features	8	v1.2.0 - v1.3.0
+Bottom Line: PixFrameWorkspace ist produktionsreif. Nur BUG-4 sollte vor v1.2.0 gefixt werden.
+
+PixFrameWorkspace · v1.1.0 · 31. März 2026 Kontakt: markus.emanuel@gmail.com
