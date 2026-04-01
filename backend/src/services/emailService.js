@@ -8,11 +8,10 @@
 const path = require('path');
 const fs   = require('fs');
 
-const paths = require('../config/paths');
-const SETTINGS_PATH = paths.SETTINGS_FILE;
+const settingsService = require('./settingsService');
 
 function readSettings() {
-  try { return JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8')); }
+  try { return settingsService.getSettings(); }
   catch { return {}; }
 }
 

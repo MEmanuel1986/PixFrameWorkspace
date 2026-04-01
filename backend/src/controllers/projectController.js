@@ -1,12 +1,11 @@
-const projectService = require('../services/projectService');
+const projectService  = require('../services/projectService');
+const settingsService = require('../services/settingsService');
 const path           = require('path');
 const fs             = require('fs');
 const paths          = require('../config/paths');
 
-const SETTINGS_FILE = paths.SETTINGS_FILE;
-
 function loadSettings() {
-  try { return JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf-8')); }
+  try { return settingsService.getSettings(); }
   catch { return {}; }
 }
 

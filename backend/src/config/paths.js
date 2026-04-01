@@ -33,9 +33,6 @@ const LOGO_DIR      = path.join(UPLOADS_DIR, 'logo');
 const RECEIPTS_DIR  = path.join(UPLOADS_DIR, 'receipts');
 const CONTRACTS_DIR = path.join(UPLOADS_DIR, 'contracts');
 
-// ── Legacy-Referenz (für Migration) ────────────────────────────────────
-const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
-
 // ── Temp-Verzeichnis ───────────────────────────────────────────────────
 const TEMP_DIR = os.tmpdir();
 
@@ -56,6 +53,5 @@ module.exports = {
   LOGO_DIR,
   RECEIPTS_DIR,
   CONTRACTS_DIR,
-  SETTINGS_FILE,
   TEMP_DIR,
 };
