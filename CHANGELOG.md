@@ -4,7 +4,7 @@
 ---
 
 ## v1.1.1 — Hotfixes & Cleanup
-*30. März 2026*
+*01. April 2026*
 
 ### Fixes
 - cleanup-project.ps1 und project-files.txt entfernt

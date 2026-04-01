@@ -1,6 +1,6 @@
 # PixFrameWorkspace — Roadmap & offene Punkte
 
-*Stand: v1.1.0 · 31. März 2026*
+*Stand: v1.1.0 · 01. April 2026*
 *Stack: Vue 3 + Pinia + Vite · Electron 30 · Node.js + Express · SQLite (better-sqlite3)*
 
 ---
