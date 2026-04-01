@@ -288,6 +288,30 @@ async function generatePDF(apiPath) {
   }
 }
 
+// ── PDF Auto-Save im Projektordner ─────────────────────────────────────
+async function savePdfToProjectFolder(apiPath, pdfBuffer, filename) {
+  try {
+    const { net } = require('electron');
+    const pdfBase64 = Buffer.from(pdfBuffer).toString('base64');
+
+    const response = await net.fetch(`${BACKEND_URL}/api/workspace/save-pdf`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ apiPath, filename, pdfBase64 }),
+    });
+
+    if (response.ok) {
+      const result = await response.json();
+      if (result.saved) {
+        console.log(`[PDF] Auto-Save: ${result.path}`);
+      }
+    }
+  } catch (e) {
+    // Nicht kritisch — PDF wird trotzdem dem User zum Download gegeben
+    console.warn('[PDF] Auto-Save fehlgeschlagen:', e.message);
+  }
+}
+
 // ── IPC Handler ────────────────────────────────────────────────────────
 function setupIPC() {
   ipcMain.handle('get-workspace-path', () => {
@@ -314,6 +338,11 @@ function setupIPC() {
     console.log(`[PDF] Generiere: ${apiPath}`);
     try {
       const buffer = await generatePDF(apiPath, options || {});
+
+      // Auto-Save: PDF im Projektordner ablegen (fire-and-forget)
+      savePdfToProjectFolder(apiPath, buffer, options?.filename || '')
+        .catch(e => console.warn('[PDF] Auto-Save fehlgeschlagen:', e.message));
+
       return buffer;
     } catch (err) {
       console.error('[PDF] Fehler:', err.message);

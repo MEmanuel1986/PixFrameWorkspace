@@ -90,6 +90,7 @@ app.use('/api/holidays',  holidayRoutes);
 app.use('/api/email',     emailRoutes);
 app.use('/api/pdf',       pdfRoutes);
 app.use('/api/backup',    backupRoutes);
+app.use('/api/workspace', require('./routes/workspace'));
 
 // ━━━ 404 Handler ━━━
 app.use((req, res) => {

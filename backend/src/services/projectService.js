@@ -9,6 +9,7 @@
 
 const { BaseRepository, generateId, rowToCamel } = require('./BaseRepository');
 const logger = require('../utils/logger');
+const workspaceService = require('./workspaceService');
 
 const PROJECT_JSON_FIELDS = [
   'contract_data', 'contract_addenda', 'signed_contracts',
@@ -158,6 +159,19 @@ class ProjectService extends BaseRepository {
     })();
 
     const created = this.getProjectById(id);
+
+    // Projektordner im Workspace anlegen
+    try {
+      const custRow = this.db.prepare('SELECT customer_number FROM customers WHERE id = ?').get(data.customerId);
+      const customerNumber = custRow?.customer_number || 'unbekannt';
+      const folderPath = workspaceService.initProjectFolder(customerNumber, id, created.projectName);
+      // Pfad in der DB speichern
+      this.db.prepare('UPDATE projects SET project_folder_path = ? WHERE id = ?').run(folderPath, id);
+      created.projectFolderPath = folderPath;
+    } catch (e) {
+      logger.warn(`⚠️ Projektordner konnte nicht erstellt werden: ${e.message}`);
+    }
+
     logger.info(`✅ Auftrag erstellt: ${created.id}`, created.projectName);
     return created;
   }
