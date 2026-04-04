@@ -157,8 +157,8 @@
 
                             <div class="qv-actions">
                               <button class="btn btn-ghost btn-sm btn-icon" title="Anzeigen (neuer Tab)" @click="openDocPrint(inv)">🔍</button>
-                              <button class="btn btn-ghost btn-sm qv-action-print" title="Drucken"
-                                @click="openDocPrint(inv, 'print')">📥 Drucken / Herunterladen</button>
+                              <button class="btn btn-ghost btn-sm qv-action-print" title="PDF öffnen"
+                                @click="openDocPrint(inv, 'print')">📂 Öffnen</button>
                               <button v-if="inv.status === 'Entwurf'"
                                 class="btn btn-ghost btn-sm" @click="reviseFinalInvoice(inv)">
                                 ↩ Neue Version
@@ -205,7 +205,7 @@
                               style="font-size:9px;margin-left:10px">{{ rel.status }}</span>
                             <div class="qv-actions" style="margin-left:auto">
                               <button class="btn btn-ghost btn-sm btn-icon" @click="openDocPrint(rel)">🔍</button>
-                              <button class="btn btn-ghost btn-sm qv-action-print" @click="openDocPrint(rel, 'print')">📥</button>
+                              <button class="btn btn-ghost btn-sm qv-action-print" @click="openDocPrint(rel, 'print')">📂</button>
                               <button class="btn btn-ghost btn-sm qv-action-download" @click="openDocPrint(rel, 'download')">📥</button>
                             </div>
                           </div>

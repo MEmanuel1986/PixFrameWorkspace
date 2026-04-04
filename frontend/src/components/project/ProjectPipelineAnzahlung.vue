@@ -216,8 +216,8 @@
                             <template v-if="idx === 0">
                               <button class="btn btn-ghost btn-sm qv-action-print"
                                 @click="openDocPrint(inv, 'print')"
-                                title="Drucken / Herunterladen">
-                                📥 Drucken / Herunterladen
+                                title="PDF öffnen">
+                                📂 Öffnen
                               </button>
                               <button v-if="inv.status === 'Entwurf'"
                               class="btn btn-ghost btn-sm" @click="reviseDepositInvoice(inv)">
@@ -265,7 +265,7 @@
                               style="font-size:9px;margin-left:10px">{{ rel.status }}</span>
                             <div class="qv-actions" style="margin-left:auto">
                               <button class="btn btn-ghost btn-sm btn-icon" @click="openDocPrint(rel)">🔍</button>
-                              <button class="btn btn-ghost btn-sm qv-action-print" @click="openDocPrint(rel, 'print')" title="Drucken / Herunterladen">📥</button>
+                              <button class="btn btn-ghost btn-sm qv-action-print" @click="openDocPrint(rel, 'print')" title="PDF öffnen">📂</button>
                             </div>
                           </div>
                         </div>

@@ -53,9 +53,15 @@ router.post('/save-pdf', (req, res) => {
       return res.json({ success: true, saved: false, reason: 'Kein Projektbezug' });
     }
 
-    const safeName = (filename || 'Dokument') + (filename?.endsWith('.pdf') ? '' : '.pdf');
+    // Standardisierten Dateinamen erzeugen
+    const standardName = context.standardFilename || filename || 'Dokument';
+    const safeName = standardName + (standardName.endsWith('.pdf') ? '' : '.pdf');
+
+    // Unterordner: Vertraege in vertraege/, alles andere in dokumente/
+    const subfolder = context.subfolder || 'dokumente';
+
     const savedPath = workspaceService.savePdfToProject(
-      pdfBuffer, context.customerNumber, context.projectId, safeName
+      pdfBuffer, context.customerNumber, context.projectId, safeName, subfolder
     );
 
     res.json({ success: true, saved: true, path: savedPath });
@@ -65,41 +71,115 @@ router.post('/save-pdf', (req, res) => {
   }
 });
 
+/**
+ * Sanitize Kundenname fuer Dateinamen
+ */
+function sanitizeForFilename(str) {
+  if (!str) return '';
+  return str.replace(/[^a-zA-Z0-9äöüÄÖÜß\-_ ]/g, '').trim().replace(/\s+/g, '_');
+}
+
+/**
+ * Kundennamen aus Customer-Objekt erzeugen
+ */
+function buildCustomerLabel(customer) {
+  if (!customer) return '';
+  const name = [customer.lastName, customer.firstName].filter(Boolean).join('_');
+  return sanitizeForFilename(name || customer.company || '');
+}
+
+/**
+ * Resolve-Funktion: Ermittelt Projekt-Kontext UND standardisierten Dateinamen
+ * aus der API-URL.
+ *
+ * Gibt zurueck: { customerNumber, projectId, standardFilename, subfolder }
+ */
 function resolveProjectContext(apiPath) {
   try {
+    // ── Dokumente (Angebote, Rechnungen) ──
     const docMatch = apiPath.match(/\/api\/pdf\/document\/(.+)/);
     if (docMatch) {
       const doc = getDocumentService().getDocumentById(docMatch[1]);
       if (doc?.projectId) {
         const project  = getProjectService().getProjectById(doc.projectId);
         const customer = getCustomerService().getCustomerById(project.customerId);
-        return { customerNumber: customer.customerNumber, projectId: doc.projectId };
+        const custLabel = buildCustomerLabel(customer);
+        const docNum = doc.documentNumber || '';
+
+        // Typ-Prefix bestimmen
+        let prefix = 'Dokument';
+        if (doc.type === 'quote')   prefix = 'Angebot';
+        if (doc.type === 'invoice') {
+          if (doc.docSubtype === 'cancellation') prefix = 'Storno';
+          else if (doc.docSubtype === 'correction') prefix = 'Korrektur';
+          else if (doc.isDeposit) prefix = 'Anzahlungsrechnung';
+          else prefix = 'Rechnung';
+        }
+
+        // Standardname: Typ_Nummer_Kundenname
+        const parts = [prefix, docNum, custLabel].filter(Boolean);
+        return {
+          customerNumber: customer.customerNumber,
+          projectId: doc.projectId,
+          standardFilename: parts.join('_'),
+          subfolder: 'dokumente',
+        };
       }
       return null;
     }
 
+    // ── Shooting-Vertrag ──
     const contractMatch = apiPath.match(/\/api\/pdf\/contract\/(.+)/);
     if (contractMatch) {
       const project  = getProjectService().getProjectById(contractMatch[1]);
       const customer = getCustomerService().getCustomerById(project.customerId);
-      return { customerNumber: customer.customerNumber, projectId: project.id };
+      const custLabel = buildCustomerLabel(customer);
+      const contractNum = project.contractNumber || '';
+      const parts = ['Vertrag', contractNum, custLabel].filter(Boolean);
+      return {
+        customerNumber: customer.customerNumber,
+        projectId: project.id,
+        standardFilename: parts.join('_'),
+        subfolder: 'vertraege',
+      };
     }
 
+    // ── ADV (Auftragsverarbeitung) ──
     const advMatch = apiPath.match(/\/api\/pdf\/adv\/(.+)/);
     if (advMatch) {
       const project  = getProjectService().getProjectById(advMatch[1]);
       const customer = getCustomerService().getCustomerById(project.customerId);
-      return { customerNumber: customer.customerNumber, projectId: project.id };
+      const custLabel = buildCustomerLabel(customer);
+      return {
+        customerNumber: customer.customerNumber,
+        projectId: project.id,
+        standardFilename: 'ADV_' + custLabel,
+        subfolder: 'vertraege',
+      };
     }
 
+    // ── Vertragsnachtrag ──
     const addMatch = apiPath.match(/\/api\/pdf\/addendum\/([^/]+)\/(.+)/);
     if (addMatch) {
       const project  = getProjectService().getProjectById(addMatch[1]);
       const customer = getCustomerService().getCustomerById(project.customerId);
-      return { customerNumber: customer.customerNumber, projectId: project.id };
+      const custLabel = buildCustomerLabel(customer);
+      const addId = addMatch[2];
+      // Nachtragsnummer aus dem Projekt laden
+      const addenda = project.contractAddenda || [];
+      const addIdx = addenda.findIndex(a => a.id === addId);
+      const nrLabel = addIdx >= 0 ? 'N' + (addIdx + 1) : addId;
+      return {
+        customerNumber: customer.customerNumber,
+        projectId: project.id,
+        standardFilename: 'Nachtrag_' + nrLabel + '_' + custLabel,
+        subfolder: 'vertraege',
+      };
     }
 
-    // agb, dsgvo, adv-vertrag, blank-contract, ear → kein Projektbezug
+    // ── AGB (statisch, aber Projektbezug aus Referer/Query moeglich) ──
+    // AGB, DSGVO, ADV-Vertrag, blank-contract → kein automatischer Projektbezug
+    // Diese werden nur gespeichert wenn explizit ein Projektkontext mitgegeben wird
     return null;
   } catch (e) {
     console.warn('[workspace] resolveProjectContext:', e.message);

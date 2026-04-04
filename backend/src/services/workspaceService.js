@@ -4,7 +4,7 @@
  *
  * Verantwortlich fuer:
  *   - Erstellen der Ordnerstruktur pro Projekt
- *   - Ablage von PDFs im Projektordner (dokumente/)
+ *   - Ablage von PDFs im Projektordner (dokumente/ oder vertraege/)
  *   - Ablage von Vertraegen (vertraege/)
  *   - Pfad-Lookup fuer Medien-Import (Vorbereitung)
  *
@@ -13,8 +13,8 @@
  *     ├── dokumente/        ← Generierte PDFs (Angebote, Rechnungen)
  *     ├── medien/bilder/    ← Fotos (Medien-Import, spaeter)
  *     ├── medien/videos/    ← Videos (spaeter)
- *     ├── vertraege/        ← Unterzeichnete Vertraege, Nachtraege
- *     └── korrespondenz/    ← E-Mails, Anhänge
+ *     ├── vertraege/        ← Vertraege, ADV, DSGVO, AGB, Nachtraege
+ *     └── korrespondenz/    ← E-Mails, Anhaenge
  */
 
 const path   = require('path');
@@ -42,22 +42,23 @@ function initProjectFolder(customerNumber, projectId, projectName = '') {
 }
 
 /**
- * Speichert ein PDF im Projektordner unter dokumente/.
+ * Speichert ein PDF im Projektordner.
  *
  * @param {Buffer} pdfBuffer      - Der PDF-Inhalt
  * @param {string} customerNumber - z.B. 'K-00001'
  * @param {string} projectId      - z.B. 'projects_47750842'
- * @param {string} filename       - z.B. 'A-2026-03_00001_Emanuel.pdf'
+ * @param {string} filename       - z.B. 'Angebot_A-2026-03_00001_Emanuel.pdf'
+ * @param {string} subfolder      - 'dokumente' (default) oder 'vertraege'
  * @returns {string} Absoluter Pfad zur gespeicherten Datei
  */
-function savePdfToProject(pdfBuffer, customerNumber, projectId, filename) {
+function savePdfToProject(pdfBuffer, customerNumber, projectId, filename, subfolder = 'dokumente') {
   if (!pdfBuffer || !customerNumber || !projectId) {
     logger.warn('[workspace] savePdfToProject: Fehlende Parameter');
     return null;
   }
 
   const safe = paths.sanitizeFolderName(filename.replace(/\.pdf$/i, '')) + '.pdf';
-  const folder = paths.projectSubfolder(customerNumber, projectId, 'dokumente');
+  const folder = paths.projectSubfolder(customerNumber, projectId, subfolder);
 
   // Ordner sicherstellen
   if (!fs.existsSync(folder)) fs.mkdirSync(folder, { recursive: true });
@@ -158,7 +159,7 @@ function getWorkspaceInfo() {
     auftraegeDir: paths.AUFTRAEGE_DIR,
     uploadsDir: paths.UPLOADS_DIR,
     backupsDir: paths.BACKUPS_DIR,
-    databaseDir: paths.DATABASE_DIR,
+    databaseDir: paths.DATA_DIR,
     kundenOrdner: auftraege,
     gesamtDateien: total,
   };

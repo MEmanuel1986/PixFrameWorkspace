@@ -40,7 +40,7 @@
             <th style="width:100px">Fällig/Gültig</th>
             <th style="width:90px" class="text-right">Betrag</th>
             <th style="width:100px">Status</th>
-            <th style="width:80px">Aktionen</th>
+            <th style="width:100px">Aktionen</th>
           </tr>
         </thead>
         <tbody>
@@ -110,6 +110,10 @@
                 <button v-if="doc.type==='invoice'"
                   class="btn btn-ghost btn-sm btn-icon" @click="downloadZugferdDoc(doc)"
                   title="E-Rechnung (ZUGFeRD XML) herunterladen">📄</button>
+                <!-- 📁 Ordner öffnen (nur wenn Auftragsbezug) -->
+                <button v-if="doc.projectId"
+                  class="btn btn-ghost btn-sm btn-icon" @click="openDocFolder(doc)"
+                  title="Dokumenten-Ordner öffnen">📁</button>
                 <button class="btn btn-ghost btn-sm btn-icon text-danger" @click="confirmDeleteDoc(doc)" title="Löschen">🗑️</button>
               </div>
             </td>
@@ -290,6 +294,22 @@ export default {
       window.open(url, '_blank')
     }
 
+    // 📁 Ordner öffnen — öffnet den Projektordner/dokumente/ im Explorer
+    function openDocFolder(doc) {
+      if (!window.pixframe?.openFolder || !doc.projectId) return
+      const project = store.projects.find(p => p.id === doc.projectId)
+      if (!project?.projectFolderPath) return
+      fetch(`${API_BASE}/api/workspace/info`)
+        .then(r => r.json())
+        .then(json => {
+          const wsPath = json.data?.path
+          if (!wsPath) return
+          const fullPath = wsPath + '/' + project.projectFolderPath + '/dokumente'
+          window.pixframe.openFolder(fullPath.replace(/\//g, '\\'))
+        })
+        .catch(e => console.warn('Ordner öffnen fehlgeschlagen:', e))
+    }
+
     // 📄 E-Rechnung ZUGFeRD — direkt aus Store generieren, kein neuer Tab nötig
     async function downloadZugferdDoc(doc) {
       try {
@@ -385,7 +405,8 @@ export default {
     return {
       store, searchQuery, activeFilter, typeFilters, uploadTypes, filtered,
       fullName, customerName, typeLabel, typeBadge, statusBadge,
-      fmtDate, fmtPrice, isOverdue, isExpired, download, openDocPdf, printDoc, downloadZugferdDoc,
+      fmtDate, fmtPrice, isOverdue, isExpired, download,
+      openDocPdf, printDoc, openDocFolder, downloadZugferdDoc,
       showUploadModal, uSaving, uError, uForm, selFile, projectsForCustomer,
       openUploadModal, onFile, saveUpload,
       delDoc, confirmDeleteDoc, deleteDoc,

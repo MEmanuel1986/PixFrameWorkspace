@@ -1,11 +1,11 @@
 /**
- * server.js – PixFrame Workspace Backend v1.1.0
+ * server.js – PixFrame Workspace Backend v1.2.0
  *
  * Funktioniert sowohl standalone (node server.js) als auch
  * eingebettet in Electron (require('./server.js')).
  *
  * Reihenfolge:
- *   1. Workspace-Pfad setzen
+ *   1. Workspace-Pfad aus paths.js (liest .workspace Datei / Env / Default)
  *   2. Datenbank initialisieren
  *   3. Optionale JSON → SQLite Migration
  *   4. Express-App starten
@@ -19,9 +19,8 @@ const config = require('./src/config');
 const paths  = require('./src/config/paths');
 
 // ─── 1. Workspace-Pfad ──────────────────────────────────────────────────
-// Electron setzt PIXFRAME_WORKSPACE vor dem require.
-// Standalone: Default = aktuelles Verzeichnis
-const WORKSPACE_PATH = process.env.PIXFRAME_WORKSPACE || path.resolve(__dirname);
+// paths.js liest: 1. PIXFRAME_WORKSPACE env → 2. .workspace Datei → 3. Default
+const WORKSPACE_PATH = paths.WORKSPACE_DIR;
 console.log(`📂 Workspace: ${WORKSPACE_PATH}`);
 
 // ─── 2. Datenbank initialisieren ────────────────────────────────────────
@@ -75,18 +74,13 @@ const app           = require('./src/app');
 const backupService = require('./src/services/backupService');
 
 // ─── 5. In Produktion: Vue-Build ausliefern ─────────────────────────────
-// Wenn frontend/dist/ existiert, liefert Express das SPA aus.
-// In Entwicklung (Vite Dev Server) wird dieser Block übersprungen.
 const frontendDist = path.join(paths.ROOT_DIR, 'frontend', 'dist');
 if (fs.existsSync(frontendDist) && fs.existsSync(path.join(frontendDist, 'index.html'))) {
   const express = require('express');
 
-  // Statische Assets
   app.use(express.static(frontendDist, { index: false }));
 
-  // SPA Fallback: Alle nicht-API Routen → index.html
   app.get('*', (req, res, next) => {
-    // API-Routen und Uploads nicht abfangen
     if (req.path.startsWith('/api/') || req.path.startsWith('/uploads/')) {
       return next();
     }
@@ -113,8 +107,6 @@ const server = app.listen(PORT, () => {
 });
 
 // ─── 6. Graceful Shutdown ───────────────────────────────────────────────
-// Funktioniert sowohl standalone (SIGTERM/SIGINT) als auch in Electron
-// (Electron ruft process.exit auf, was die 'exit' Handler triggert)
 function shutdown(signal) {
   console.log(`\n🛑 ${signal} empfangen – fahre herunter ...`);
   server.close(() => {

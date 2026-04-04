@@ -43,7 +43,11 @@
             </template>
           </div>
         </div>
-        <div class="proj-hero-actions"></div>
+        <div class="proj-hero-actions">
+          <button v-if="project.projectFolderPath" class="btn-folder" @click="openProjectFolder()" title="Projektordner im Explorer öffnen">
+            📁 Ordner öffnen
+          </button>
+        </div>
       </div>
 
       <!-- ── KPI Zeile ── -->
@@ -249,14 +253,43 @@
             <button class="pp-close" @click="pipelineOpen = null">✕</button>
           </div>
           <div class="pp-body">
-            <div class="coming-soon-panel">
-              <div class="cs-icon">🚧</div>
-              <div class="cs-title">Bearbeitung — in Entwicklung</div>
-              <div class="cs-text">
-                Die Bearbeitungs-Timeline, SD-Karten-Import und Mediensicherung werden in einer
-                zukünftigen Version vollständig ausgebaut.<br /><br />
-                <strong>Geplante Funktionen:</strong><br />
-                Bildbearbeitungs-Workflow mit Fortschrittsanzeige · SD-Import &amp; Ordnerstruktur ·
+
+            <!-- Projektordner -->
+            <div v-if="project.projectFolderPath" class="pp-folder-section">
+              <div class="pp-folder-title">📂 Projektordner</div>
+              <div class="pp-folder-grid">
+                <button class="pp-folder-btn" @click="openProjectFolder('medien/bilder')" title="Bilder-Ordner öffnen">
+                  <span class="pp-folder-icon">🖼️</span>
+                  <span class="pp-folder-label">Bilder</span>
+                </button>
+                <button class="pp-folder-btn" @click="openProjectFolder('medien/videos')" title="Video-Ordner öffnen">
+                  <span class="pp-folder-icon">🎬</span>
+                  <span class="pp-folder-label">Videos</span>
+                </button>
+                <button class="pp-folder-btn" @click="openProjectFolder('dokumente')" title="Dokumente-Ordner öffnen">
+                  <span class="pp-folder-icon">📄</span>
+                  <span class="pp-folder-label">Dokumente</span>
+                </button>
+                <button class="pp-folder-btn" @click="openProjectFolder('vertraege')" title="Verträge-Ordner öffnen">
+                  <span class="pp-folder-icon">📎</span>
+                  <span class="pp-folder-label">Verträge</span>
+                </button>
+                <button class="pp-folder-btn" @click="openProjectFolder('korrespondenz')" title="Korrespondenz-Ordner öffnen">
+                  <span class="pp-folder-icon">✉️</span>
+                  <span class="pp-folder-label">Korrespondenz</span>
+                </button>
+                <button class="pp-folder-btn" @click="openProjectFolder()" title="Gesamten Projektordner öffnen">
+                  <span class="pp-folder-icon">📁</span>
+                  <span class="pp-folder-label">Alles</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="coming-soon-panel" style="margin-top:16px">
+              <div class="cs-icon" style="font-size:28px">🚧</div>
+              <div class="cs-title" style="font-size:13px">Bearbeitungs-Timeline — in Entwicklung</div>
+              <div class="cs-text" style="font-size:12px">
+                Bildbearbeitungs-Workflow mit Fortschrittsanzeige · SD-Import ·
                 NAS-Archivierung · Lieferungs-Tracking
               </div>
               <button class="btn btn-ghost btn-sm" style="margin-top:8px" @click="pipelineOpen = 'abrechnung'">
@@ -436,7 +469,10 @@
           <div class="pdm-dialog">
             <div class="pdm-header">
               <span class="pdm-title">📄 Dokumente <span class="badge badge-neutral" style="font-size:10px;margin-left:4px">{{ allProjectDocs.length }}</span></span>
-              <button class="pdm-close" @click="docsModal = false">✕</button>
+              <div style="display:flex;gap:6px;align-items:center">
+                <button v-if="project.projectFolderPath" class="btn btn-xs btn-ghost" @click="openProjectFolder('dokumente')" title="Dokumenten-Ordner öffnen">📁</button>
+                <button class="pdm-close" @click="docsModal = false">✕</button>
+              </div>
             </div>
 
             <div class="pdm-body">
@@ -969,6 +1005,24 @@ export default {
       router.push('/')
     }
 
+    /**
+     * Öffnet den Projektordner (oder Unterordner) im Explorer/Finder.
+     * @param {string} [subfolder] - z.B. 'dokumente', 'medien/bilder', 'vertraege'
+     */
+    function openProjectFolder(subfolder) {
+      if (!window.pixframe?.openFolder || !project.value?.projectFolderPath) return
+      fetch(`${API_BASE}/api/workspace/info`)
+        .then(r => r.json())
+        .then(json => {
+          const wsPath = json.data?.path
+          if (!wsPath) return
+          let fullPath = wsPath + '/' + project.value.projectFolderPath
+          if (subfolder) fullPath += '/' + subfolder
+          window.pixframe.openFolder(fullPath.replace(/\//g, '\\'))
+        })
+        .catch(e => console.warn('Ordner öffnen fehlgeschlagen:', e))
+    }
+
     // Live-Vorschau im Hero-Banner während Anfrage-Formular ausgefüllt wird
     const heroLive = ref({ projectName: '', booking: '', bookingTime: '', location: '' })
     function onHeroLive(data) { Object.assign(heroLive.value, data) }
@@ -1050,10 +1104,14 @@ export default {
         docsModal.value = false
         return
       }
-      // PDF direkt speichern
-      const filename = [doc.documentNumber, doc.customerName].filter(Boolean).join('_')
-      downloadPdfFromBackend(`/api/pdf/document/${doc.id}`, filename)
-        .catch(e => console.error('PDF-Fehler:', e))
+      // PDF erzeugen + im Viewer oeffnen (oder Fallback: direkt speichern)
+      if (window.pixframe?.generateAndOpenPDF) {
+        openPdfInViewer('/api/pdf/document/' + doc.id)
+      } else {
+        const filename = [doc.documentNumber, doc.customerName].filter(Boolean).join('_')
+        downloadPdfFromBackend(`/api/pdf/document/${doc.id}`, filename)
+          .catch(e => console.error('PDF-Fehler:', e))
+      }
       docsModal.value = false
     }
 
@@ -1321,15 +1379,19 @@ export default {
         window.open(`/print/contract/${project.value.id}`, '_blank')
         return
       }
-      // PDF direkt speichern via Electron IPC (kein neues Fenster)
-      const p = project.value
-      const cu = customer.value
-      const filename = [p?.contractNumber || 'Vertrag', p?.category, cu?.lastName || cu?.company || ''].filter(Boolean).join('_')
-      downloadPdfFromBackend(`/api/pdf/contract/${project.value.id}`, filename)
-        .catch(e => console.error('PDF-Fehler:', e))
+      // PDF erzeugen + im Viewer oeffnen
+      if (window.pixframe?.generateAndOpenPDF) {
+        openPdfInViewer('/api/pdf/contract/' + project.value.id)
+      } else {
+        const p = project.value
+        const cu = customer.value
+        const filename = [p?.contractNumber || 'Vertrag', p?.category, cu?.lastName || cu?.company || ''].filter(Boolean).join('_')
+        downloadPdfFromBackend(`/api/pdf/contract/${project.value.id}`, filename)
+          .catch(e => console.error('PDF-Fehler:', e))
+      }
     }
 
-    // ── Vertrag drucken/speichern: Status → Verschickt, dann PDF speichern ──
+    // ── Vertrag oeffnen: Status → Verschickt, dann PDF im Viewer oeffnen ──
     async function printContract() {
       if (contractStore.contractStatus === 'Entwurf') {
         contractStore.contractStatus = 'Verschickt'
@@ -1338,7 +1400,7 @@ export default {
       openContractPrint('download')
     }
 
-    // ── Vertrag herunterladen: Status → Verschickt, dann PDF speichern ──
+    // ── Vertrag oeffnen (Alias) ──
     async function downloadContract() {
       if (contractStore.contractStatus === 'Entwurf') {
         contractStore.contractStatus = 'Verschickt'
@@ -1349,10 +1411,14 @@ export default {
 
     function openAdvPrint() {
       if (!project.value) return
-      const cu = customer.value
-      const filename = 'ADV_' + (cu?.lastName || cu?.company || project.value.id)
-      downloadPdfFromBackend(`/api/pdf/adv/${project.value.id}`, filename)
-        .catch(e => console.error('PDF-Fehler:', e))
+      if (window.pixframe?.generateAndOpenPDF) {
+        openPdfInViewer('/api/pdf/adv/' + project.value.id)
+      } else {
+        const cu = customer.value
+        const filename = 'ADV_' + (cu?.lastName || cu?.company || project.value.id)
+        downloadPdfFromBackend(`/api/pdf/adv/${project.value.id}`, filename)
+          .catch(e => console.error('PDF-Fehler:', e))
+      }
     }
 
     function openAddendumPrint(addendumId, autoAction = false) {
@@ -1361,12 +1427,16 @@ export default {
         window.open(`/print/addendum/${project.value.id}/${addendumId}`, '_blank')
         return
       }
-      const filename = 'Nachtrag_' + (project.value.contractNumber || project.value.id)
-      downloadPdfFromBackend(`/api/pdf/addendum/${project.value.id}/${addendumId}`, filename)
-        .catch(e => console.error('PDF-Fehler:', e))
+      if (window.pixframe?.generateAndOpenPDF) {
+        openPdfInViewer('/api/pdf/addendum/' + project.value.id + '/' + addendumId)
+      } else {
+        const filename = 'Nachtrag_' + (project.value.contractNumber || project.value.id)
+        downloadPdfFromBackend(`/api/pdf/addendum/${project.value.id}/${addendumId}`, filename)
+          .catch(e => console.error('PDF-Fehler:', e))
+      }
     }
 
-    // ── Nachtrag speichern: Status → Verschickt, dann PDF speichern ──
+    // ── Nachtrag oeffnen: Status → Verschickt, dann PDF im Viewer ──
     async function printAddendum(add) {
       if ((add.addStatus || 'Entwurf') === 'Entwurf') {
         await setAddendumStatus(add, 'Verschickt')
@@ -1374,7 +1444,7 @@ export default {
       openAddendumPrint(add.id, 'download')
     }
 
-    // ── Nachtrag herunterladen: Status → Verschickt, dann PDF speichern ──
+    // ── Nachtrag oeffnen (Alias) ──
     async function downloadAddendum(add) {
       if ((add.addStatus || 'Entwurf') === 'Entwurf') {
         await setAddendumStatus(add, 'Verschickt')
@@ -2116,9 +2186,26 @@ export default {
       pipelineOpen.value    = 'angebot'
     }
 
-    // ── Angebot drucken: Status → Versendet, dann Druckdialog auto-triggern ──
+    // 📂 PDF erzeugen → im Projektordner speichern → im System-Viewer öffnen
+    async function openPdfInViewer(apiPath) {
+      if (window.pixframe?.generateAndOpenPDF) {
+        try {
+          await window.pixframe.generateAndOpenPDF(apiPath)
+        } catch (e) {
+          console.error('[PDF] Öffnen fehlgeschlagen:', e)
+          // Fallback: im Browser öffnen
+          const printPath = apiPath.replace(/^\/api\/pdf\//, '/print/')
+          window.open(printPath, '_blank')
+        }
+      } else {
+        // Kein Electron — Fallback: im Browser öffnen
+        const printPath = apiPath.replace(/^\/api\/pdf\//, '/print/')
+        window.open(printPath, '_blank')
+      }
+    }
+
+    // ── Angebot öffnen: Status → Versendet, dann PDF im Viewer öffnen ──
     async function printQuote(qv) {
-      // 1. Status ZUERST setzen (kein Entwurf-Wasserzeichen beim Druck)
       if (!['Versendet','Angenommen','Abgelehnt','Ersetzt'].includes(qv.status)) {
         try {
           await store.setDocumentStatus(qv.id, 'Versendet')
@@ -2126,13 +2213,11 @@ export default {
           await refreshDocs()
         } catch (e) { console.error('printQuote Status-Fehler:', e) }
       }
-      // 2. Druckseite öffnen → auto-triggert window.print()
-      openDocPrint(qv, 'print')
+      openPdfInViewer('/api/pdf/document/' + qv.id)
     }
 
-    // ── Angebot herunterladen: Status → Versendet, dann PDF-Download auto-triggern ──
+    // ── Angebot öffnen (Alias) ──
     async function downloadQuote(qv) {
-      // 1. Status ZUERST setzen
       if (!['Versendet','Angenommen','Abgelehnt','Ersetzt'].includes(qv.status)) {
         try {
           await store.setDocumentStatus(qv.id, 'Versendet')
@@ -2140,8 +2225,7 @@ export default {
           await refreshDocs()
         } catch (e) { console.error('downloadQuote Status-Fehler:', e) }
       }
-      // 2. Druckseite öffnen → auto-triggert Browser-Druckdialog (Als PDF speichern)
-      openDocPrint(qv, 'download')
+      openPdfInViewer('/api/pdf/document/' + qv.id)
     }
 
     function openQuoteFromProject() {
@@ -3357,7 +3441,7 @@ export default {
     }
 
     return {
-      project, customer, customerName, goBack, loading, heroLive, onHeroLive,
+      project, customer, customerName, goBack, openProjectFolder, loading, heroLive, onHeroLive,
       projectDocuments, anyService, hasGettingReady,
       formatDate, formatCurrency, isExpired, typeLabel, stdDocPrintUrl, isStdDoc, openDocOrStd, openDocPrint, openDocDownload, downloadZugferdFromDoc, downloadDoc, openPrintView,
       detailDocId, detailDocObj, openDocDetail, refreshDocs, autoUpdateProjectStatus, store,
@@ -3438,6 +3522,38 @@ export default {
 .proj-category  { font-size: 12px; background: rgba(255,255,255,.18); border: 1px solid rgba(255,255,255,.2); border-radius: 99px; padding: 2px 10px; }
 .proj-meta      { font-size: 13px; opacity: .85; display: flex; flex-wrap: wrap; gap: 4px; }
 .proj-hero-actions { flex-shrink: 0; }
+.btn-folder {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 14px; border-radius: 6px;
+  background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.2);
+  color: white; font-size: 12.5px; font-weight: 600;
+  cursor: pointer; transition: all .14s; white-space: nowrap;
+}
+.btn-folder:hover { background: rgba(255,255,255,.22); }
+
+/* Projektordner-Grid im Bearbeitungs-Panel */
+.pp-folder-section {
+  background: var(--bg-alt); border: 1.5px solid var(--border);
+  border-radius: 10px; padding: 16px;
+}
+.pp-folder-title {
+  font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 12px;
+}
+.pp-folder-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+}
+.pp-folder-btn {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 14px 8px; border-radius: 8px;
+  background: var(--surface); border: 1.5px solid var(--border);
+  cursor: pointer; transition: all .14s;
+}
+.pp-folder-btn:hover {
+  border-color: var(--primary); background: var(--primary-light);
+  transform: translateY(-1px); box-shadow: 0 2px 8px rgba(0,0,0,.08);
+}
+.pp-folder-icon { font-size: 22px; }
+.pp-folder-label { font-size: 11px; font-weight: 600; color: var(--text-muted); }
 
 /* KPIs */
 .proj-kpis { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }

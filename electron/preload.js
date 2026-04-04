@@ -25,4 +25,8 @@ contextBridge.exposeInMainWorld('pixframe', {
   // options: { docLabel?, docType? }
   // Returns: ArrayBuffer (PDF)
   generatePDF: (apiPath, options) => ipcRenderer.invoke('generate-pdf', apiPath, options),
+
+  // PDF erzeugen → im Projektordner speichern → im System-Viewer oeffnen
+  // Returns: { savedPath, opened } oder null bei Fehler
+  generateAndOpenPDF: (apiPath, options) => ipcRenderer.invoke('generate-and-open-pdf', apiPath, options),
 });

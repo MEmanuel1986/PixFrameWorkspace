@@ -178,9 +178,9 @@
                             <!-- Drucken + Herunterladen: nur aktuelle Version -->
                             <template v-if="!qv.supersededBy">
                               <button class="btn btn-ghost btn-sm qv-action-print"
-                                title="Drucken / Herunterladen — Status wird auf ›Versendet‹ gesetzt"
+                                title="PDF öffnen — Status wird auf ›Versendet‹ gesetzt"
                                 @click="printQuote(qv)">
-                                📥 Drucken / Herunterladen
+                                📂 Öffnen
                               </button>
                               <button v-if="!['Angenommen','Abgelehnt','Ersetzt'].includes(qv.status)"
                                 class="btn btn-ghost btn-sm qv-action-revise"

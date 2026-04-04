@@ -34,6 +34,14 @@ function loadWorkspaceConfig() {
 function saveWorkspaceConfig(config) {
   if (!fs.existsSync(CONFIG_DIR)) fs.mkdirSync(CONFIG_DIR, { recursive: true });
   fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), 'utf-8');
+
+  // .workspace Datei im Projekt-Root schreiben (fuer Backend in Dev-Mode)
+  if (config.workspacePath) {
+    const projectRoot = path.join(__dirname, '..');
+    const wsFile = path.join(projectRoot, '.workspace');
+    try { fs.writeFileSync(wsFile, config.workspacePath, 'utf-8'); }
+    catch (e) { console.warn('[Config] .workspace schreiben fehlgeschlagen:', e.message); }
+  }
 }
 
 async function selectWorkspaceFolder(currentPath) {
@@ -304,11 +312,134 @@ async function savePdfToProjectFolder(apiPath, pdfBuffer, filename) {
       const result = await response.json();
       if (result.saved) {
         console.log(`[PDF] Auto-Save: ${result.path}`);
+        return result.path;  // Absoluten Pfad zurueckgeben
       }
     }
+    return null;
   } catch (e) {
     // Nicht kritisch — PDF wird trotzdem dem User zum Download gegeben
     console.warn('[PDF] Auto-Save fehlgeschlagen:', e.message);
+    return null;
+  }
+}
+
+// ── Workspace-Migration ────────────────────────────────────────────────
+// Findet alle Verzeichnisse die PixFrame-Daten enthalten
+function findDataSources(configuredPath) {
+  const sources = [];
+
+  // 1. Konfigurierter Workspace-Pfad (PixFrame-Data/)
+  if (configuredPath && fs.existsSync(configuredPath)) {
+    const hasContent = ['database', 'auftraege', 'uploads', 'backups', 'data']
+      .some(d => fs.existsSync(path.join(configuredPath, d)));
+    if (hasContent) {
+      sources.push({ path: configuredPath, type: 'workspace' });
+    }
+  }
+
+  // 2. Legacy: backend/data/ (alte Standalone-Installation)
+  const legacyBackendData = path.join(app.getAppPath(), 'backend', 'data');
+  if (fs.existsSync(legacyBackendData) &&
+      fs.existsSync(path.join(legacyBackendData, 'pixframe.sqlite'))) {
+    // Nur wenn nicht schon als workspace erfasst
+    if (!sources.some(s => s.path === path.dirname(legacyBackendData))) {
+      sources.push({ path: path.dirname(legacyBackendData), type: 'legacy-backend' });
+    }
+  }
+
+  // 3. Default: PixFrame-Data/ neben Projekt-Root
+  const defaultWs = path.join(app.getAppPath(), 'PixFrame-Data');
+  if (fs.existsSync(defaultWs) && !sources.some(s => s.path === defaultWs)) {
+    const hasContent = ['database', 'auftraege', 'uploads', 'backups']
+      .some(d => fs.existsSync(path.join(defaultWs, d)));
+    if (hasContent) {
+      sources.push({ path: defaultWs, type: 'default' });
+    }
+  }
+
+  return sources;
+}
+
+// Kopiert alle Daten von Quellverzeichnissen in den neuen Workspace
+async function migrateWorkspaceData(sources, newPath) {
+  // Zielordner sicherstellen
+  const targetDirs = ['data', 'auftraege', 'uploads', 'uploads/logo',
+                      'uploads/belege', 'uploads/contracts', 'backups', 'logs'];
+  for (const d of targetDirs) {
+    const full = path.join(newPath, d);
+    if (!fs.existsSync(full)) fs.mkdirSync(full, { recursive: true });
+  }
+
+  for (const source of sources) {
+    console.log(`[Migration] Quelle: ${source.path} (${source.type})`);
+
+    if (source.type === 'legacy-backend') {
+      // backend/data/pixframe.sqlite → newPath/data/
+      const oldDb = path.join(source.path, 'data', 'pixframe.sqlite');
+      const newDb = path.join(newPath, 'data', 'pixframe.sqlite');
+      if (copySqliteDb(oldDb, newDb)) {
+        console.log(`[Migration] DB kopiert: ${newDb}`);
+      }
+      // backend/uploads → uploads/
+      copyDirRecursive(path.join(source.path, 'uploads'), path.join(newPath, 'uploads'));
+      // backend/backups → backups/
+      copyDirRecursive(path.join(source.path, 'backups'), path.join(newPath, 'backups'));
+      // backend/logs → logs/
+      copyDirRecursive(path.join(source.path, 'logs'), path.join(newPath, 'logs'));
+    } else {
+      // workspace/default → alles 1:1 kopieren
+      const dirsToSync = ['data', 'database', 'auftraege', 'uploads', 'backups', 'logs'];
+      // DB aus data/ oder database/ kopieren
+      for (const dbDir of ['data', 'database']) {
+        const oldDataDb = path.join(source.path, dbDir, 'pixframe.sqlite');
+        if (fs.existsSync(oldDataDb)) {
+          const newDb = path.join(newPath, 'data', 'pixframe.sqlite');
+          if (copySqliteDb(oldDataDb, newDb)) {
+            console.log(`[Migration] DB kopiert (aus ${dbDir}/): ${newDb}`);
+          }
+          break;
+        }
+      }
+      for (const d of dirsToSync) {
+        copyDirRecursive(path.join(source.path, d), path.join(newPath, d));
+      }
+    }
+  }
+
+  console.log(`[Migration] Abgeschlossen: ${newPath}`);
+}
+
+// Kopiert SQLite DB + WAL/SHM Dateien
+function copySqliteDb(srcDb, destDb) {
+  if (!fs.existsSync(srcDb)) return false;
+  if (fs.existsSync(destDb)) return false;  // Nicht ueberschreiben
+
+  fs.copyFileSync(srcDb, destDb);
+  // WAL und SHM Dateien mitkopieren (falls vorhanden)
+  for (const ext of ['-wal', '-shm']) {
+    const src = srcDb + ext;
+    if (fs.existsSync(src)) fs.copyFileSync(src, destDb + ext);
+  }
+  return true;
+}
+
+// Rekursive Verzeichniskopie (ueberspringt existierende Dateien)
+function copyDirRecursive(src, dest) {
+  if (!fs.existsSync(src)) return;
+  if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
+
+  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+    const srcPath  = path.join(src, entry.name);
+    const destPath = path.join(dest, entry.name);
+
+    if (entry.isDirectory()) {
+      copyDirRecursive(srcPath, destPath);
+    } else {
+      // Nicht ueberschreiben wenn Ziel existiert
+      if (!fs.existsSync(destPath)) {
+        fs.copyFileSync(srcPath, destPath);
+      }
+    }
   }
 }
 
@@ -321,9 +452,55 @@ function setupIPC() {
 
   ipcMain.handle('change-workspace', async () => {
     const config = loadWorkspaceConfig();
-    const newPath = await selectWorkspaceFolder(config?.workspacePath);
-    if (newPath) {
-      saveWorkspaceConfig({ workspacePath: newPath });
+    const oldPath = config?.workspacePath || null;
+    const newPath = await selectWorkspaceFolder(oldPath);
+    if (!newPath) return null;
+    if (oldPath && newPath === oldPath) return oldPath;
+
+    // Bestehende Daten suchen (alte Workspace-Quellen)
+    const sourceDirs = findDataSources(oldPath);
+
+    if (sourceDirs.length > 0) {
+      // Nutzer fragen ob Daten verschoben werden sollen
+      const { response } = await dialog.showMessageBox(mainWindow, {
+        type: 'question',
+        buttons: ['Daten verschieben', 'Nur Pfad aendern', 'Abbrechen'],
+        defaultId: 0,
+        cancelId: 2,
+        title: 'Datenpfad aendern',
+        message: 'Sollen die bestehenden Daten in den neuen Ordner verschoben werden?',
+        detail: `Aktuell: ${sourceDirs.map(s => s.path).join(', ')}\nNeu: ${newPath}\n\nEmpfohlen: "Daten verschieben" — damit gehen keine Auftraege, PDFs oder die Datenbank verloren.`,
+      });
+
+      if (response === 2) return null;  // Abbrechen
+
+      if (response === 0) {
+        // Daten verschieben
+        try {
+          await migrateWorkspaceData(sourceDirs, newPath);
+          console.log(`[Workspace] Daten verschoben nach: ${newPath}`);
+        } catch (err) {
+          dialog.showErrorBox('Migration fehlgeschlagen',
+            `Die Daten konnten nicht verschoben werden:\n\n${err.message}\n\nDer alte Pfad bleibt aktiv.`);
+          return null;
+        }
+      }
+    }
+
+    saveWorkspaceConfig({ workspacePath: newPath });
+
+    if (IS_DEV) {
+      // Dev-Mode: Gesamten Prozess beenden (concurrently startet alles neu)
+      await dialog.showMessageBox(mainWindow, {
+        type: 'info',
+        buttons: ['OK'],
+        title: 'Datenpfad geaendert',
+        message: 'Der Datenpfad wurde geaendert.',
+        detail: `Neuer Pfad: ${newPath}\n\nDie App wird jetzt beendet. Bitte starte sie mit "npm run dev" neu.`,
+      });
+      process.exit(0);
+    } else {
+      // Prod-Mode: App normal neu starten
       app.relaunch();
       app.exit(0);
     }
@@ -346,6 +523,37 @@ function setupIPC() {
       return buffer;
     } catch (err) {
       console.error('[PDF] Fehler:', err.message);
+      throw err;
+    }
+  });
+
+  // ── PDF erzeugen → speichern → im System-Viewer oeffnen ──
+  ipcMain.handle('generate-and-open-pdf', async (_event, apiPath, options) => {
+    console.log(`[PDF] Erzeugen + Oeffnen: ${apiPath}`);
+    try {
+      const buffer = await generatePDF(apiPath, options || {});
+
+      // Im Projektordner speichern (NICHT fire-and-forget, wir brauchen den Pfad)
+      const savedPath = await savePdfToProjectFolder(apiPath, buffer, options?.filename || '');
+
+      if (savedPath) {
+        // Im Standard-PDF-Viewer oeffnen
+        console.log(`[PDF] Oeffne: ${savedPath}`);
+        shell.openPath(savedPath);
+        return { savedPath, opened: true };
+      }
+
+      // Fallback: Kein Projektbezug — als temp-Datei speichern und oeffnen
+      const tmpDir = require('os').tmpdir();
+      const tmpName = (options?.filename || 'PixFrame_Dokument').replace(/[^a-zA-Z0-9\u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df\-_ ]/g, '') + '.pdf';
+      const tmpPath = path.join(tmpDir, tmpName);
+      fs.writeFileSync(tmpPath, buffer);
+      console.log(`[PDF] Oeffne (temp): ${tmpPath}`);
+      shell.openPath(tmpPath);
+      return { savedPath: tmpPath, opened: true };
+
+    } catch (err) {
+      console.error('[PDF] Erzeugen + Oeffnen Fehler:', err.message);
       throw err;
     }
   });

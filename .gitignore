@@ -6,6 +6,8 @@ dist/
 dist-electron/
 
 # Workspace data (user-specific, not code)
+PixFrame-Data/
+.workspace
 backend/data/
 backend/uploads/
 backend/backups/
@@ -28,6 +30,7 @@ desktop.ini
 # Editor
 .vscode/
 .idea/
+.vs/
 *.swp
 *.swo
 

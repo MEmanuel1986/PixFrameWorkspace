@@ -1626,16 +1626,75 @@
            System
       ════════════════════════════════ -->
       <div v-if="activeTab === 'system'" class="s-content">
-        <div class="s-card sys-coming-soon-card">
-          <div class="s-card-body" style="padding:48px 32px;text-align:center">
-            <div style="font-size:48px;opacity:.3;margin-bottom:12px">🚧</div>
-            <div style="font-size:16px;font-weight:700;color:var(--text-muted);margin-bottom:8px">System — in Entwicklung</div>
-            <div style="font-size:13px;color:var(--text-muted);line-height:1.7;max-width:480px;margin:0 auto">
-              Die Systemeinstellungen (Electron-Migration, nativer Ordner-Dialog)
-              werden in einer zukünftigen Version aktiviert.
+
+        <!-- Datenpfad -->
+        <div class="s-card">
+          <div class="s-card-header">
+            <h3 class="s-card-title">📂 Datenpfad</h3>
+            <p class="s-card-subtitle">Hier werden alle Daten, Aufträge, Backups und Medien gespeichert.</p>
+          </div>
+          <div class="s-card-body">
+
+            <div class="sys-path-row">
+              <div class="sys-path-label">Aktueller Pfad</div>
+              <div class="sys-path-value">
+                <code class="sys-path-code">{{ workspaceInfo.path || '—' }}</code>
+                <button class="btn btn-xs btn-ghost" @click="openWorkspaceFolder" title="Ordner im Explorer öffnen">📂</button>
+              </div>
             </div>
+
+            <div class="sys-stats-grid" v-if="workspaceInfo.path">
+              <div class="sys-stat">
+                <div class="sys-stat-val">{{ workspaceInfo.kundenOrdner || 0 }}</div>
+                <div class="sys-stat-lbl">Kunden-Ordner</div>
+              </div>
+              <div class="sys-stat">
+                <div class="sys-stat-val">{{ workspaceInfo.gesamtDateien || 0 }}</div>
+                <div class="sys-stat-lbl">Dateien gesamt</div>
+              </div>
+              <div class="sys-stat">
+                <div class="sys-stat-val">{{ workspaceInfo.databaseDir ? '✅' : '—' }}</div>
+                <div class="sys-stat-lbl">SQLite-DB</div>
+              </div>
+            </div>
+
+            <div class="sys-dirs-list" v-if="workspaceInfo.path">
+              <div class="sys-dir-row" v-for="dir in workspaceDirs" :key="dir.label">
+                <span class="sys-dir-icon">{{ dir.icon }}</span>
+                <span class="sys-dir-label">{{ dir.label }}</span>
+                <code class="sys-dir-path">{{ dir.path }}</code>
+                <button class="btn btn-xs btn-ghost" @click="openFolder(dir.fullPath)" title="Öffnen">📂</button>
+              </div>
+            </div>
+
+            <div style="margin-top:16px;display:flex;gap:8px">
+              <button class="btn btn-sm btn-secondary" @click="changeWorkspace" v-if="isElectron">
+                📁 Datenpfad ändern
+              </button>
+              <button class="btn btn-sm btn-secondary" @click="loadWorkspaceInfo">
+                🔄 Aktualisieren
+              </button>
+            </div>
+
           </div>
         </div>
+
+        <!-- App-Info -->
+        <div class="s-card">
+          <div class="s-card-header">
+            <h3 class="s-card-title">ℹ️ App-Info</h3>
+          </div>
+          <div class="s-card-body">
+            <table class="sys-info-table">
+              <tr><td class="sys-info-label">Version</td><td>{{ appVersion || '—' }}</td></tr>
+              <tr><td class="sys-info-label">Node.js</td><td>{{ nodeVersion }}</td></tr>
+              <tr><td class="sys-info-label">Electron</td><td>{{ isElectron ? '✅ Aktiv' : '❌ Standalone' }}</td></tr>
+              <tr><td class="sys-info-label">PDF-Engine</td><td>{{ isElectron ? 'Electron printToPDF' : 'Browser-Druck' }}</td></tr>
+              <tr><td class="sys-info-label">Datenbank</td><td>SQLite (WAL-Mode)</td></tr>
+            </table>
+          </div>
+        </div>
+
       </div><!-- /system tab -->
 
     </div>
@@ -1932,7 +1991,7 @@ export default {
         children: [
           { id: 'backup', icon: '💾', label: 'Backup', count: null },
           { id: 'update', icon: '🔄', label: 'Update', count: null },
-          { id: 'system', icon: '⚙️', label: 'System 🚧', count: null, disabled: true },
+          { id: 'system', icon: '⚙️', label: 'System', count: null },
         ],
       },
     ])
@@ -2534,9 +2593,66 @@ export default {
       }
     }
 
+    // ── Workspace / System ──────────────────────────────────────────────────
+    const workspaceInfo = ref({})
+    const appVersion = ref('')
+    const isElectron = ref(!!window.pixframe?.isElectron)
+    const nodeVersion = typeof process !== 'undefined' ? (process.versions?.node || '—') : '—'
+
+    const workspaceDirs = computed(() => {
+      const w = workspaceInfo.value
+      if (!w.path) return []
+      return [
+        { icon: '📊', label: 'Datenbank',  path: 'database/',  fullPath: w.databaseDir },
+        { icon: '📁', label: 'Aufträge',   path: 'auftraege/', fullPath: w.auftraegeDir },
+        { icon: '📤', label: 'Uploads',    path: 'uploads/',   fullPath: w.uploadsDir },
+        { icon: '💾', label: 'Backups',    path: 'backups/',   fullPath: w.backupsDir },
+      ].filter(d => d.fullPath)
+    })
+
+    async function loadWorkspaceInfo() {
+      try {
+        const res = await fetch(`${API_BASE}/api/workspace/info`)
+        const json = await res.json()
+        workspaceInfo.value = json.data || {}
+      } catch (e) {
+        console.warn('Workspace-Info nicht ladbar:', e.message)
+      }
+    }
+
+    function openWorkspaceFolder() {
+      if (window.pixframe?.openFolder && workspaceInfo.value.path) {
+        window.pixframe.openFolder(workspaceInfo.value.path)
+      }
+    }
+
+    function openFolder(folderPath) {
+      if (window.pixframe?.openFolder && folderPath) {
+        window.pixframe.openFolder(folderPath)
+      }
+    }
+
+    async function changeWorkspace() {
+      if (window.pixframe?.changeWorkspace) {
+        await window.pixframe.changeWorkspace()
+      }
+    }
+
+    // App-Version laden
+    if (window.pixframe?.getAppVersion) {
+      window.pixframe.getAppVersion().then(v => { appVersion.value = v })
+    }
+
+    // Workspace-Info beim Tab-Wechsel laden
+    watch(activeTab, (tab) => {
+      if (tab === 'system') loadWorkspaceInfo()
+    })
+
     // ── PFS-Data / NAS-Pfad ───────────────────────────────────────────────────
     return {
       availablePaymentMethods, savePdf,
+      workspaceInfo, workspaceDirs, appVersion, isElectron, nodeVersion,
+      loadWorkspaceInfo, openWorkspaceFolder, openFolder, changeWorkspace,
 
       activeTab, allTabs, navItems, openGroup, selectTab, isSettingsTab,
 
@@ -3128,44 +3244,59 @@ export default {
   background: var(--bg-alt);
   border: 1.5px solid var(--border);
   border-radius: var(--radius);
+  margin-bottom: 12px;
 }
-.sys-path-display {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 1;
-  min-width: 0;
-}
-.sys-path-display.sys-path-empty { opacity: .55; }
-.sys-path-icon { font-size: 18px; flex-shrink: 0; }
-.sys-path-icon-empty { opacity: .6; }
-.sys-path-text {
-  font-family: monospace;
-  font-size: 12.5px;
+.sys-path-label { font-size: 12px; color: var(--text-muted); min-width: 100px; flex-shrink: 0; }
+.sys-path-value { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+.sys-path-code {
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 12px;
   color: var(--text);
+  background: var(--surface);
+  padding: 4px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  flex: 1;
 }
-.sys-path-actions { display: flex; gap: 6px; flex-shrink: 0; }
 
-.sys-hint {
-  margin-top: 8px;
-  padding: 7px 11px;
+.sys-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.sys-stat {
+  text-align: center;
+  padding: 12px;
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
-  font-size: 12.5px;
 }
-.sys-hint-warn { background: rgba(234,179,8,.12); color: #92400e; border: 1px solid rgba(234,179,8,.3); }
-.sys-hint-ok   { background: rgba(22,163,74,.1);  color: #166534; border: 1px solid rgba(22,163,74,.25); }
+.sys-stat-val { font-size: 20px; font-weight: 800; color: var(--primary); }
+.sys-stat-lbl { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
 
-.sys-info-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 6px 0;
+.sys-dirs-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+.sys-dir-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 10px;
+  border-radius: var(--radius);
+  font-size: 13px;
 }
-.sys-info-lbl { font-size: 12px; color: var(--text-muted); width: 120px; flex-shrink: 0; }
-.sys-info-val { font-size: 13px; font-weight: 600; color: var(--text); }
+.sys-dir-row:hover { background: var(--bg-alt); }
+.sys-dir-icon { font-size: 14px; flex-shrink: 0; }
+.sys-dir-label { font-weight: 600; min-width: 80px; color: var(--text); }
+.sys-dir-path {
+  font-family: monospace; font-size: 11.5px; color: var(--text-muted);
+  flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.sys-info-table { width: 100%; border-collapse: collapse; }
+.sys-info-table td { padding: 6px 0; font-size: 13px; border-bottom: 1px solid var(--border); }
+.sys-info-table tr:last-child td { border-bottom: none; }
+.sys-info-label { color: var(--text-muted); width: 140px; }
 
 /* ── Zahlungsarten-Grid ── */
 .payment-methods-grid {

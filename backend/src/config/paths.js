@@ -8,7 +8,7 @@
  *
  * Ordnerstruktur:
  *   PixFrame-Data/
- *   ├── database/         ← SQLite-DB
+ *   ├── data/             ← SQLite-DB (pixframe.sqlite)
  *   ├── auftraege/        ← Projekte nach Kunde/Projekt
  *   │   └── K-00001/
  *   │       └── P-2026-03_00001/
@@ -31,13 +31,31 @@ const BACKEND_DIR = path.resolve(__dirname, '../..');
 const ROOT_DIR    = path.resolve(BACKEND_DIR, '..');
 
 // ── Workspace-Verzeichnis (read-write) ─────────────────────────────────
-// Prioritaet: 1. PIXFRAME_WORKSPACE env  2. PixFrame-Data neben Projekt-Root
-const DEFAULT_WORKSPACE = path.join(ROOT_DIR, 'PixFrame-Data');
-const WORKSPACE_DIR = process.env.PIXFRAME_WORKSPACE || DEFAULT_WORKSPACE;
+// Prioritaet:
+//   1. PIXFRAME_WORKSPACE Umgebungsvariable (von Electron Prod-Mode gesetzt)
+//   2. .workspace Datei im Projekt-Root (von Electron geschrieben)
+//   3. Default: PixFrame-Data/ neben Projekt-Root
+function resolveWorkspace() {
+  // 1. Env-Variable (hoechste Prioritaet)
+  if (process.env.PIXFRAME_WORKSPACE) return process.env.PIXFRAME_WORKSPACE;
+
+  // 2. .workspace Datei im Projekt-Root
+  const wsFile = path.join(ROOT_DIR, '.workspace');
+  try {
+    if (fs.existsSync(wsFile)) {
+      const wsPath = fs.readFileSync(wsFile, 'utf-8').trim();
+      if (wsPath && fs.existsSync(wsPath)) return wsPath;
+    }
+  } catch {}
+
+  // 3. Default
+  return path.join(ROOT_DIR, 'PixFrame-Data');
+}
+
+const WORKSPACE_DIR = resolveWorkspace();
 
 // ── Hauptverzeichnisse ─────────────────────────────────────────────────
-const DATABASE_DIR  = path.join(WORKSPACE_DIR, 'database');
-const DATA_DIR      = DATABASE_DIR;  // Alias fuer Kompatibilitaet (databaseService nutzt DATA_DIR)
+const DATA_DIR      = path.join(WORKSPACE_DIR, 'data');
 const AUFTRAEGE_DIR = path.join(WORKSPACE_DIR, 'auftraege');
 const UPLOADS_DIR   = path.join(WORKSPACE_DIR, 'uploads');
 const BACKUPS_DIR   = path.join(WORKSPACE_DIR, 'backups');
@@ -52,7 +70,7 @@ const CONTRACTS_DIR = path.join(UPLOADS_DIR, 'contracts');  // Legacy-Kompatibil
 const TEMP_DIR = os.tmpdir();
 
 // ── Basis-Verzeichnisse sicherstellen ──────────────────────────────────
-[DATABASE_DIR, AUFTRAEGE_DIR, UPLOADS_DIR, BACKUPS_DIR, LOGS_DIR,
+[DATA_DIR, AUFTRAEGE_DIR, UPLOADS_DIR, BACKUPS_DIR, LOGS_DIR,
  LOGO_DIR, RECEIPTS_DIR, CONTRACTS_DIR]
   .forEach(dir => {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -121,7 +139,6 @@ module.exports = {
   BACKEND_DIR,
   ROOT_DIR,
   WORKSPACE_DIR,
-  DATABASE_DIR,
   DATA_DIR,
   AUFTRAEGE_DIR,
   UPLOADS_DIR,

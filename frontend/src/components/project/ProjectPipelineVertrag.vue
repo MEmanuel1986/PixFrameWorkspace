@@ -546,9 +546,9 @@
                               <!-- Drucken + Download: nur aktuelle, nicht unterschriebene Version -->
                               <template v-if="idx === 0 && !contractStore.contractLocked">
                                 <button class="btn btn-ghost btn-sm qv-action-print"
-                                  title="Drucken — Status wird auf ›Verschickt‹ gesetzt"
+                                  title="PDF öffnen — Status wird auf ›Verschickt‹ gesetzt"
                                   @click="printContract">
-                                  📥 Drucken / Herunterladen</button>
+                                  📂 Öffnen</button>
                                 <button class="btn btn-ghost btn-sm qv-action-revise"
                                   title="Neue Version erstellen — diese Version wird als ›Verworfen‹ markiert"
                                   @click="contractStore.contractFormIsNew = false; contractStore.contractFormOpen = true">
@@ -594,9 +594,9 @@
                             <button class="btn btn-ghost btn-sm btn-icon" title="Ansehen" @click="openContractPrint(false)">🔍</button>
                             <template v-if="!contractStore.contractLocked">
                               <button class="btn btn-ghost btn-sm qv-action-print"
-                                title="Drucken — Status wird auf ›Verschickt‹ gesetzt"
+                                title="PDF öffnen — Status wird auf ›Verschickt‹ gesetzt"
                                 @click="printContract">
-                                📥 Drucken / Herunterladen</button>
+                                📂 Öffnen</button>
                               <button class="btn btn-ghost btn-sm qv-action-revise"
                                 @click="contractStore.contractFormIsNew = false; contractStore.contractFormOpen = true">
                                 ↩ Neue Version
@@ -704,9 +704,9 @@
                             <!-- Drucken + Download: wenn noch kein signedFile -->
                             <template v-if="!add.signedFile">
                               <button class="btn btn-ghost btn-sm qv-action-print"
-                                title="Drucken — Status wird auf ›Verschickt‹ gesetzt"
+                                title="PDF öffnen — Status wird auf ›Verschickt‹ gesetzt"
                                 @click="printAddendum(add)">
-                                📥 Drucken / Herunterladen</button>
+                                📂 Öffnen</button>
                             </template>
 
                             <!-- Unterschriebene Fassung -->
