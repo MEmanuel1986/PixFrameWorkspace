@@ -1556,6 +1556,15 @@ export default {
             const docs = await store.fetchDocumentsByProject(project.value.id)
             projectDocuments.value = docs || []
           } catch (e) { console.warn('Docs reload failed:', e) }
+
+          // AGB, DSGVO und ADV-PDFs automatisch im Projektordner ablegen (fire-and-forget)
+          if (window.pixframe?.generatePDF) {
+            const pid = project.value.id
+            window.pixframe.generatePDF(`/api/pdf/agb?projectId=${pid}`).catch(() => {})
+            window.pixframe.generatePDF(`/api/pdf/dsgvo?projectId=${pid}`).catch(() => {})
+            window.pixframe.generatePDF(`/api/pdf/adv/${pid}`).catch(() => {})
+            console.log('[PDF] AGB/DSGVO/ADV werden im Projektordner abgelegt')
+          }
         }
 
         // Zurück zur Übersicht (wie bei Angebot nach "Angebot erstellen")

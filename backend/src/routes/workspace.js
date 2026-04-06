@@ -9,6 +9,7 @@
 
 const express = require('express');
 const router  = express.Router();
+const path    = require('path');
 const workspaceService = require('../services/workspaceService');
 
 function getDocumentService()  { return require('../services/documentService'); }
@@ -72,11 +73,34 @@ router.post('/save-pdf', (req, res) => {
 });
 
 /**
+ * Gibt den Ordnernamen fuer ein Projekt zurueck.
+ * Neue Projekte: Projektnummer (z.B. 'Proj-2026-04_00001')
+ * Alte Projekte: aus projectFolderPath oder projectId als Fallback
+ */
+function getProjectFolderKey(project) {
+  if (project.projectFolderPath) {
+    return path.basename(project.projectFolderPath);
+  }
+  return project.projectNumber || project.id;
+}
+
+/**
  * Sanitize Kundenname fuer Dateinamen
  */
 function sanitizeForFilename(str) {
   if (!str) return '';
   return str.replace(/[^a-zA-Z0-9äöüÄÖÜß\-_ ]/g, '').trim().replace(/\s+/g, '_');
+}
+
+/**
+ * Extrahiert einen Query-Parameter aus einer URL/apiPath-Zeichenkette.
+ * z.B. extractQueryParam('/api/pdf/agb?projectId=abc', 'projectId') => 'abc'
+ */
+function extractQueryParam(urlStr, key) {
+  const qIdx = urlStr.indexOf('?');
+  if (qIdx === -1) return null;
+  const params = new URLSearchParams(urlStr.slice(qIdx));
+  return params.get(key) || null;
 }
 
 /**
@@ -105,6 +129,7 @@ function resolveProjectContext(apiPath) {
         const customer = getCustomerService().getCustomerById(project.customerId);
         const custLabel = buildCustomerLabel(customer);
         const docNum = doc.documentNumber || '';
+        const folderKey = getProjectFolderKey(project);
 
         // Typ-Prefix bestimmen
         let prefix = 'Dokument';
@@ -120,7 +145,7 @@ function resolveProjectContext(apiPath) {
         const parts = [prefix, docNum, custLabel].filter(Boolean);
         return {
           customerNumber: customer.customerNumber,
-          projectId: doc.projectId,
+          projectId: folderKey,
           standardFilename: parts.join('_'),
           subfolder: 'dokumente',
         };
@@ -135,10 +160,11 @@ function resolveProjectContext(apiPath) {
       const customer = getCustomerService().getCustomerById(project.customerId);
       const custLabel = buildCustomerLabel(customer);
       const contractNum = project.contractNumber || '';
+      const folderKey = getProjectFolderKey(project);
       const parts = ['Vertrag', contractNum, custLabel].filter(Boolean);
       return {
         customerNumber: customer.customerNumber,
-        projectId: project.id,
+        projectId: folderKey,
         standardFilename: parts.join('_'),
         subfolder: 'vertraege',
       };
@@ -150,9 +176,10 @@ function resolveProjectContext(apiPath) {
       const project  = getProjectService().getProjectById(advMatch[1]);
       const customer = getCustomerService().getCustomerById(project.customerId);
       const custLabel = buildCustomerLabel(customer);
+      const folderKey = getProjectFolderKey(project);
       return {
         customerNumber: customer.customerNumber,
-        projectId: project.id,
+        projectId: folderKey,
         standardFilename: 'ADV_' + custLabel,
         subfolder: 'vertraege',
       };
@@ -164,6 +191,7 @@ function resolveProjectContext(apiPath) {
       const project  = getProjectService().getProjectById(addMatch[1]);
       const customer = getCustomerService().getCustomerById(project.customerId);
       const custLabel = buildCustomerLabel(customer);
+      const folderKey = getProjectFolderKey(project);
       const addId = addMatch[2];
       // Nachtragsnummer aus dem Projekt laden
       const addenda = project.contractAddenda || [];
@@ -171,15 +199,70 @@ function resolveProjectContext(apiPath) {
       const nrLabel = addIdx >= 0 ? 'N' + (addIdx + 1) : addId;
       return {
         customerNumber: customer.customerNumber,
-        projectId: project.id,
+        projectId: folderKey,
         standardFilename: 'Nachtrag_' + nrLabel + '_' + custLabel,
         subfolder: 'vertraege',
       };
     }
 
-    // ── AGB (statisch, aber Projektbezug aus Referer/Query moeglich) ──
-    // AGB, DSGVO, ADV-Vertrag, blank-contract → kein automatischer Projektbezug
-    // Diese werden nur gespeichert wenn explizit ein Projektkontext mitgegeben wird
+    // ── AGB mit Projektbezug ──
+    const agbMatch = apiPath.match(/\/api\/pdf\/agb(?:\?|$)/);
+    if (agbMatch) {
+      const projectId = extractQueryParam(apiPath, 'projectId');
+      if (projectId) {
+        const project  = getProjectService().getProjectById(projectId);
+        const customer = getCustomerService().getCustomerById(project.customerId);
+        const custLabel = buildCustomerLabel(customer);
+        const folderKey = getProjectFolderKey(project);
+        return {
+          customerNumber: customer.customerNumber,
+          projectId: folderKey,
+          standardFilename: 'AGB_' + custLabel,
+          subfolder: 'vertraege',
+        };
+      }
+      return null;
+    }
+
+    // ── DSGVO mit Projektbezug ──
+    const dsgvoMatch = apiPath.match(/\/api\/pdf\/dsgvo(?:\?|$)/);
+    if (dsgvoMatch) {
+      const projectId = extractQueryParam(apiPath, 'projectId');
+      if (projectId) {
+        const project  = getProjectService().getProjectById(projectId);
+        const customer = getCustomerService().getCustomerById(project.customerId);
+        const custLabel = buildCustomerLabel(customer);
+        const folderKey = getProjectFolderKey(project);
+        return {
+          customerNumber: customer.customerNumber,
+          projectId: folderKey,
+          standardFilename: 'DSGVO_' + custLabel,
+          subfolder: 'vertraege',
+        };
+      }
+      return null;
+    }
+
+    // ── ADV-Vertrag (statisch, ohne Projekt-ID in URL) ──
+    const advVertragMatch = apiPath.match(/\/api\/pdf\/adv-vertrag(?:\?|$)/);
+    if (advVertragMatch) {
+      const projectId = extractQueryParam(apiPath, 'projectId');
+      if (projectId) {
+        const project  = getProjectService().getProjectById(projectId);
+        const customer = getCustomerService().getCustomerById(project.customerId);
+        const custLabel = buildCustomerLabel(customer);
+        const folderKey = getProjectFolderKey(project);
+        return {
+          customerNumber: customer.customerNumber,
+          projectId: folderKey,
+          standardFilename: 'ADV-Vertrag_' + custLabel,
+          subfolder: 'vertraege',
+        };
+      }
+      return null;
+    }
+
+    // Kein Projektbezug erkannt
     return null;
   } catch (e) {
     console.warn('[workspace] resolveProjectContext:', e.message);

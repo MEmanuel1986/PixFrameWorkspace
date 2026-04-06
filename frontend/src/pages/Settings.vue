@@ -1695,6 +1695,54 @@
           </div>
         </div>
 
+        <!-- ── Datenbank-Reset ── -->
+        <div class="s-card" style="border-color: #ef4444;">
+          <div class="s-card-head">
+            <span class="s-card-title" style="color: #ef4444;">⚠️ System zurücksetzen</span>
+            <span class="s-card-sub">Datenbank und Projektordner auf Werkszustand zurücksetzen. Ein Demo-Kunde bleibt erhalten. Vertragstexte, AGB und Paragrafen bleiben bestehen.</span>
+          </div>
+          <div class="s-card-body">
+            <div class="reset-warning-box">
+              <strong>Diese Aktion löscht unwiderruflich:</strong>
+              <ul style="margin:8px 0 0 18px; font-size:13px; line-height:1.7;">
+                <li>Alle Kunden (außer Demo-Kunde)</li>
+                <li>Alle Projekte, Anfragen und Dokumente</li>
+                <li>Alle Rechnungen, Angebote und Verträge</li>
+                <li>Alle FiBu-Einträge (Ausgaben, Fahrtenbuch, Eingangsrechnungen)</li>
+                <li>Alle Dateien in den Projektordnern</li>
+              </ul>
+            </div>
+
+            <div style="margin-top:16px;">
+              <label style="font-size:13px; font-weight:600; display:block; margin-bottom:6px;">
+                🔑 Service-Passwort
+              </label>
+              <div style="display:flex; gap:10px; align-items:flex-start;">
+                <input
+                  v-model="resetPassword"
+                  type="password"
+                  placeholder="Passwort eingeben"
+                  class="reset-pw-input"
+                  style="max-width:200px;"
+                  @keyup.enter="confirmReset"
+                />
+                <button
+                  class="btn btn-sm"
+                  style="background:#ef4444; color:white; border:none; padding:8px 18px; font-weight:700;"
+                  :disabled="!resetPassword || resetBusy"
+                  @click="confirmReset"
+                >
+                  {{ resetBusy ? 'Wird zurückgesetzt…' : '🗑 Zurücksetzen' }}
+                </button>
+              </div>
+              <p v-if="resetError" class="hint danger" style="margin-top:8px;">{{ resetError }}</p>
+              <p v-if="resetSuccess" class="hint" style="margin-top:8px; color:#16a34a; font-weight:600;">
+                ✅ {{ resetSuccess }}
+              </p>
+            </div>
+          </div>
+        </div>
+
       </div><!-- /system tab -->
 
     </div>
@@ -2020,6 +2068,7 @@ export default {
         customer: { prefix: 'K',   separator: '-', digits: 5 },
         quote:    { prefix: 'A',   separator: '-', innerSeparator: '/', digits: 5, useYear: true, useMonth: true },
         invoice:  { prefix: 'RE',  separator: '-', innerSeparator: '/', digits: 5, useYear: true, useMonth: true },
+        project:  { format: 'Proj-{jjjj}-{mm}/{z,5}', start: 1 },
         delivery: { format: 'LS-{jjjj}-{mm}/{z,5}', start: 1 },
         article:  { prefix: 'ART', separator: '-', digits: 5 },
         supplier: { format: 'L-{z,5}', start: 1 },
@@ -2154,6 +2203,7 @@ export default {
           customer:     { ...form.value.numberSchemas.customer,     ...(s.numberSchemas?.customer     || {}) },
           quote:        { ...form.value.numberSchemas.quote,        ...(s.numberSchemas?.quote        || {}) },
           invoice:      { ...form.value.numberSchemas.invoice,      ...(s.numberSchemas?.invoice      || {}) },
+          project:      { ...form.value.numberSchemas.project,      ...(s.numberSchemas?.project      || {}) },
           delivery:     { ...form.value.numberSchemas.delivery,     ...(s.numberSchemas?.delivery     || {}) },
           correction:   { ...form.value.numberSchemas.correction,   ...(s.numberSchemas?.correction   || {}) },
           cancellation: { ...form.value.numberSchemas.cancellation, ...(s.numberSchemas?.cancellation || {}) },
@@ -2271,6 +2321,7 @@ export default {
       { token: '{zt,5}',  label: 'Tageszähler',        hint: 'Zurückgesetzt täglich' },
     ]
     const numSchemasDocs = [
+      { key: 'project',  label: 'Projektnummer',    placeholder: 'Proj-{jjjj}-{mm}/{z,5}', hasStart: true },
       { key: 'quote',    label: 'Angebotsnummer',   placeholder: 'A-{jjjj}-{mm}/{z,5}',   hasStart: true },
       { key: 'invoice',  label: 'Rechnungsnummer',  placeholder: 'RE-{jjjj}-{mm}/{z,5}',  hasStart: true },
       { key: 'delivery', label: 'Lieferscheinnummer', placeholder: 'LS-{jjjj}-{mm}/{z,5}', hasStart: true },
@@ -2649,6 +2700,43 @@ export default {
     })
 
     // ── PFS-Data / NAS-Pfad ───────────────────────────────────────────────────
+    // ── Datenbank-Reset ─────────────────────────────────────────────────────
+    const resetPassword = ref('')
+    const resetBusy     = ref(false)
+    const resetError    = ref('')
+    const resetSuccess  = ref('')
+
+    async function confirmReset() {
+      resetError.value   = ''
+      resetSuccess.value = ''
+
+      if (!resetPassword.value) {
+        resetError.value = 'Bitte Service-Passwort eingeben.'
+        return
+      }
+
+      if (!confirm('⚠️ ACHTUNG: Alle Daten werden unwiderruflich gelöscht!\n\nNur Einstellungen, Vertragstexte und Artikel bleiben erhalten.\n\nWirklich fortfahren?')) {
+        return
+      }
+
+      resetBusy.value = true
+      try {
+        const { data } = await apiClient.post('/reset/execute', {
+          password: resetPassword.value,
+        })
+        resetSuccess.value = data.message
+          + ` (${data.stats.before.customers} Kunden, ${data.stats.before.projects} Projekte, ${data.stats.before.documents} Dokumente gelöscht)`
+        resetPassword.value = ''
+
+        // System-Stats neu laden falls vorhanden
+        if (typeof loadSystemStats === 'function') loadSystemStats()
+      } catch (err) {
+        resetError.value = err.response?.data?.error || err.message
+      } finally {
+        resetBusy.value = false
+      }
+    }
+
     return {
       availablePaymentMethods, savePdf,
       workspaceInfo, workspaceDirs, appVersion, isElectron, nodeVersion,
@@ -2680,7 +2768,8 @@ export default {
       onBackupFileSelected, importBackup,
       updateFileInput, updateFile, updatePreview, updatePreviewing, updatePreviewErr,
       updateApplying, updateApplyErr, updateRestarting, updateRestartCountdown, updateHealthPct,
-      onUpdateFileSelected, resetUpdate, previewUpdate, applyUpdate
+      onUpdateFileSelected, resetUpdate, previewUpdate, applyUpdate,
+      resetPassword, resetBusy, resetError, resetSuccess, confirmReset
     }
   }
 }
@@ -3451,5 +3540,29 @@ export default {
 }
 .ur-example-title { font-size: 12px; font-weight: 700; color: var(--primary); margin-bottom: 4px; }
 @media (max-width: 700px) { .ur-ref-grid { grid-template-columns: 1fr; } }
+
+/* ── Reset-Bereich ── */
+.reset-warning-box {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-left: 4px solid #ef4444;
+  border-radius: 8px;
+  padding: 14px 16px;
+  font-size: 13px;
+  color: #991b1b;
+}
+.reset-pw-input {
+  padding: 8px 12px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 14px;
+  font-family: monospace;
+  letter-spacing: 2px;
+}
+.reset-pw-input:focus {
+  border-color: #ef4444;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, .15);
+}
 
 </style>

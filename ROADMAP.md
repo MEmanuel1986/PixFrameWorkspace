@@ -1,23 +1,27 @@
 # PixFrameWorkspace — Roadmap & offene Punkte
 
-*Stand: v1.1.1 · 01. April 2026*
+*Stand: v1.2.0-dev · 05. April 2026*
 *Stack: Vue 3 + Pinia + Vite · Electron 30 · Node.js + Express · SQLite (better-sqlite3)*
 
 ---
 
 ## 📊 Aktueller Zustand
 
-**v1.1.1 ist produktionsreif für Einzelnutzung.**
+**v1.1.1 ist produktionsreif für Einzelnutzung. v1.2.0-dev ist aktiv in Entwicklung.**
 
-Drei große Migrationen abgeschlossen:
+Vier große Migrationen abgeschlossen:
 - ✅ JSON → SQLite (15 Tabellen, WAL-Mode, Foreign Keys, Indizes)
 - ✅ Browser-App → Electron-Desktop (Workspace-Picker, Auto-Backup)
 - ✅ Puppeteer → Electron `printToPDF` (alle 9 Print-Views)
+- ✅ PDF-Benennung & Workspace-Unterordner (dokumente/ vs. vertraege/)
 
-E-Mail-Versand implementiert:
+E-Mail-Versand teilweise implementiert:
 - ✅ Backend: `emailService.js`, Route `/api/email/send|test|config`
 - ✅ Frontend: `SendEmailModal.vue` vollständig, in `DocumentDetailModal` eingebunden
 - ✅ SMTP-Konfiguration + Test-Mail in Einstellungen
+- 🚧 Versand-Status in Dokumentenliste fehlt noch
+- 🚧 E-Mail direkt aus Pipeline-Stufen fehlt noch
+- 🚧 „Coming soon"-Banner in Settings noch nicht entfernt
 
 ---
 
@@ -105,11 +109,58 @@ Fehlend: `assets/icon.icns` (macOS), `assets/icon.png` (Linux 512×512)
 
 ### 🟢 BUG-11 — project-files.txt noch im Repository
 
-**Status:** Wurde in v1.1.1 als erledigt dokumentiert, Datei ist aber noch vorhanden.
+**Status:** OFFEN — in v1.1.1 als erledigt dokumentiert, Datei ist aber noch im Repo vorhanden (bestätigt via GitHub)
 
 **Fix:** `git rm project-files.txt && git commit`
 
 **Aufwand:** 1 Minute · **Priorität:** nächster Commit
+
+---
+
+### 🟢 BUG-12 — README.md auf GitHub zeigt veralteten Stand (v1.0.0-beta.1)
+
+**Status:** OFFEN — GitHub-README beschreibt noch Puppeteer, JSON-Speicher, alte Projektstruktur und alte Schnellstart-Anleitung
+
+**Fix:** Aktualisiertes README.md ins Repository pushen
+
+**Aufwand:** bereits erledigt (Datei liegt vor), nur noch `git push` · **Priorität:** nächster Commit
+
+---
+
+### 🟡 BUG-13 — Medienimport-Reiter (Bearbeitungs-Timeline) unvollständig
+
+**Status:** OFFEN — Reiter ist angelegt, Kernfunktionalität fehlt
+
+Der SD-Karten-Import / Bearbeitungs-Timeline-Reiter wurde bei der Entwicklung durch einen Vite-SFC-Compiler-Fehler (Template-Code nach `</style>`) ausgeblendet. Grundstruktur existiert, aber folgende Funktionen sind nicht implementiert:
+
+- Importierte Mediendateien anzeigen (Thumbnail-Grid aus Workspace-Ordner `medien/`)
+- Bearbeitungsschritte mit Zeitstempel protokollieren (Status: Roh / In Bearbeitung / Fertig / Ausgeliefert)
+- Dateianzahl-Badge am Reiter-Tab
+- Verknüpfung mit `workspaceService` (Listing aus `medien/`-Unterordner)
+
+**Aufwand:** ~1–2 Tage · **Priorität:** v1.2.0
+
+---
+
+### ✅ BUG-14 — ADV/DSGVO nicht am Projekt gespeichert
+
+**Status:** ERLEDIGT (v1.2.0-dev, 05.04.2026)
+
+ADV, DSGVO und AGB werden jetzt beim ersten Vertragsspeichern automatisch als PDFs im Projektordner `vertraege/` abgelegt. `resolveProjectContext()` erkennt statische PDF-Routen mit `?projectId=`-Query-Parameter. Hochgeladene unterschriebene Verträge und Nachträge landen ebenfalls direkt im Projektordner `vertraege/` statt in `uploads/contracts/`.
+
+---
+
+### 🟡 BUG-15 — Abschluss-Reiter ohne Funktion
+
+**Status:** OFFEN
+
+Der letzte Pipeline-Schritt „Abschluss" hat noch keinen strukturierten Inhalt. Geplante Inhalte:
+
+- Checkliste: Alle Zahlungen eingegangen? Alle Dateien ausgeliefert? Vertrag unterschrieben zurück?
+- „Auftrag abschließen"-Button mit Status-Wechsel und Archivierungs-Hinweis
+- Optionale Abschluss-Notiz / Bewertung
+
+**Aufwand:** ~0.5 Tage · **Priorität:** v1.2.0
 
 ---
 
@@ -124,6 +175,7 @@ Mit BaseRepository-Pattern und SQLite ist die Infrastruktur gut für Tests geeig
 2. `documentService` — Nummernvergabe, Storno, GoBD-Compliance (~3-4h)
 3. `fibuService` — Buchungslogik, DATEV-Export-Format (~2-3h)
 4. `emailService` — SMTP-Mock, Payload-Validierung (~1-2h)
+5. `workspaceService` — Dateinamens-Logik, Unterordner-Routing (~1h)
 
 **Tools:** vitest, better-sqlite3 `:memory:` mode
 
@@ -133,9 +185,9 @@ Mit BaseRepository-Pattern und SQLite ist die Infrastruktur gut für Tests geeig
 
 ### 🟠 TD-2 — God-Files im Frontend
 
-| Datei | Zeilen | Problem |
+| Datei | Zeilen (ca.) | Problem |
 |---|---|---|
-| `ProjectDetail.vue` | ~4.700 | Gesamte Projektlogik in einer Datei |
+| `ProjectDetail.vue` | ~4.700+ | Gesamte Projektlogik, Workspace, PDF, Pipeline-Hooks in einer Datei |
 | `Settings.vue` | ~3.200 | 12+ Tabs als Monolith |
 | `NewProjectForm.vue` | ~1.400 | B2B-Kalkulator + Formular vermischt |
 | `ProjectPipelineVertrag.vue` | ~1.700 | Vertragslogik größer als viele Apps |
@@ -161,12 +213,13 @@ npm install -D eslint @eslint/js eslint-plugin-vue prettier eslint-config-pretti
 
 ### 🟠 TD-4 — Git-Workflow: 4 Commits für komplette Entwicklung
 
-Keine Feature-Branches, keine aussagekräftigen Commit-Messages, keine Tags.
+Keine Feature-Branches, keine aussagekräftigen Commit-Messages, keine Tags. Das GitHub-Repository ist faktisch ein reines Backup.
 
 **Empfehlung ab sofort:**
 - Feature-Branches: `feature/email-versand`, `fix/bug-8-smtp-banner`
 - Conventional Commits: `fix(settings): remove coming-soon banner from SMTP tab`
-- Tags: `git tag v1.1.1`
+- Tags für jede Version: `git tag v1.1.1`
+- Regelmäßige Pushes — nicht nur nach großen Milestones
 
 **Aufwand:** 0h (nur Gewohnheit) · **Priorität:** ab sofort
 
@@ -197,24 +250,83 @@ Puppeteer ist längst entfernt. Kommentar ist irreführend.
 
 ---
 
+### 🟡 TD-7 — Internes Logging fehlt
+
+Kein strukturiertes Logging im Backend (nur `console.log`). Bei Produktionsproblemen ist Debugging schwierig.
+
+**Geplant:**
+- `winston` oder `pino` einführen (JSON-Logging, Log-Level, Datei-Output)
+- Log-Rotation (tägliche Dateien, max. 7 Tage)
+- Frontend-Fehler via IPC in Electron-Log-Datei schreiben (nutzt `electron-log`)
+- Log-Viewer in Einstellungen → System (letzte 200 Zeilen)
+
+**Aufwand:** ~1 Tag · **Priorität:** v1.2.0
+
+---
+
+### 🟡 TD-8 — Kein internes Testsystem / Dev-Modus-Helfer
+
+Für manuelle QA und Entwicklung fehlen:
+- Seed-Daten für realistische Testprojekte (Button in Dev-Modus: „Testdaten einspielen")
+- ✅ ~~Reset-Funktion für Testzwecke~~ → System-Reset mit Service-Passwort in Einstellungen → System implementiert (v1.2.0-dev)
+- Health-Dashboard in Einstellungen → System (DB-Größe, Tabellenzeilen, letztes Backup, SMTP-Status)
+
+**Aufwand:** ~0.5 Tage · **Priorität:** v1.2.0
+
+---
+
 ## ✨ Feature-Roadmap
 
-### 🚧 F-1 — E-Mail-Versand vollständig integrieren (v1.1.2)
+### 🚧 F-1 — E-Mail-Versand vollständig integrieren (v1.2.0)
 
 **Status: ~85% fertig**
 
 Fertig: Backend, `SendEmailModal`, Einbindung in `DocumentDetailModal`, SMTP-Config + Test.
 
 **Noch fehlend:**
-- "Coming soon"-Banner in Settings entfernen (BUG-8, 5 Min)
-- Versand-Status in Dokumentenliste anzeigen (gesendet / nicht gesendet)
-- E-Mail-Versand direkt aus `ProjectDetail` Pipeline-Stufen
+- „Coming soon"-Banner in Settings entfernen (BUG-8, 5 Min)
+- Versand-Status in Dokumentenliste anzeigen (gesendet / nicht gesendet / Datum)
+- E-Mail-Versand direkt aus `ProjectDetail` Pipeline-Stufen (Angebot versenden, Rechnung senden)
+- E-Mail-Log pro Projekt (welche Mails wann an wen gesendet)
+
+**Aufwand:** ~0.5–1 Tag
+
+---
+
+### 🚧 F-2 — Bearbeitungs-Reiter / Medienimport fertigstellen (v1.2.0)
+
+**Status:** Struktur vorhanden, Funktion fehlt (→ auch BUG-13)
+
+- Thumbnail-Grid aus `medien/`-Workspace-Ordner
+- Bearbeitungsstatus je Datei / Charge (Roh → In Bearbeitung → Fertig → Ausgeliefert)
+- Import-Protokoll mit Zeitstempeln
+- Dateianzahl-Badge am Tab
+
+**Aufwand:** ~1–2 Tage
+
+---
+
+### 🚧 F-3 — Abschluss-Reiter fertigstellen (v1.2.0)
+
+**Status:** Tab existiert, Inhalt fehlt (→ auch BUG-15)
+
+- Abschluss-Checkliste (Zahlungen, Dateilieferung, Vertragsrücklauf)
+- „Auftrag abschließen"-Aktion mit Status-Wechsel
+- Abschluss-Notiz / Sternebewertung intern
 
 **Aufwand:** ~0.5 Tage
 
 ---
 
-### 🟢 F-2 — Electron Auto-Update (v1.2.0)
+### ✅ F-4 — ADV/DSGVO projektbezogen speichern (v1.2.0)
+
+**Status:** ERLEDIGT (v1.2.0-dev, 05.04.2026)
+
+Beim Erstellen eines Vertrags werden AGB, DSGVO und ADV automatisch als projektbezogene PDFs im `vertraege/`-Ordner abgelegt. Hochgeladene unterschriebene Verträge und Nachträge landen ebenfalls im Projektordner. → Siehe BUG-14.
+
+---
+
+### 🟢 F-5 — Electron Auto-Update (v1.2.0)
 
 **Status:** Vorbereitet — `electron-builder` bringt `electron-updater` mit.
 
@@ -227,7 +339,7 @@ Updates via GitHub Releases. **Aufwand:** ~1 Tag
 
 ---
 
-### 🟢 F-3 — DATEV EXTF-Format (v1.2.0)
+### 🟢 F-6 — DATEV EXTF-Format (v1.2.0)
 
 **Status:** Aktuell nur CSV (SKR03, UTF-8 mit BOM)
 
@@ -237,7 +349,7 @@ Upgrade auf DATEV EXTF-Format (maschinenlesbar, direkt importierbar in DATEV-Sof
 
 ---
 
-### 🟢 F-4 — ZUGFeRD COMFORT Profile (v1.2.0)
+### 🟢 F-7 — ZUGFeRD COMFORT Profile (v1.2.0)
 
 **Status:** MINIMUM-Profil vorhanden (`zugferd.js`, 276 Zeilen)
 
@@ -247,7 +359,7 @@ Upgrade: MINIMUM → COMFORT (EN-16931 konform). Relevant wegen E-Rechnungspflic
 
 ---
 
-### 🟢 F-5 — Dashboard erweitern (v1.2.0)
+### 🟢 F-8 — Dashboard erweitern (v1.2.0)
 
 **Status:** Aktuell nur Umsatz-Chart (letzte 6 Monate)
 
@@ -260,7 +372,7 @@ Geplant:
 
 ---
 
-### 🟡 F-6 — Rate Limiting (v1.2.0)
+### 🟡 F-9 — Rate Limiting (v1.2.0)
 
 Für LAN-Szenarien (App auf NAS, andere Geräte im Heimnetz) sinnvoll.
 
@@ -268,7 +380,7 @@ Für LAN-Szenarien (App auf NAS, andere Geräte im Heimnetz) sinnvoll.
 
 ---
 
-### 🟢 F-7 — Linux-Support (v1.3.0)
+### 🟢 F-10 — Linux-Support (v1.3.0)
 
 **Status:** AppImage-Target in `package.json` bereits konfiguriert.
 
@@ -278,34 +390,61 @@ Noch fehlend: `linux/install.sh`, `icon.png` (512×512), Build-Pipeline testen.
 
 ---
 
+### 🟢 F-11 — Korrespondenz-Reiter ausbauen
+
+**Status:** Ordner `korrespondenz/` im Workspace-Dateisystem angelegt, aber kein UI dafür.
+
+Geplant:
+- Upload beliebiger Dateien (PDFs, Bilder, Word-Dokumente) in den `korrespondenz/`-Ordner
+- Anzeige als Liste mit Dateiname, Datum, Größe
+- Öffnen via `shell.openPath()`
+
+**Aufwand:** ~0.5 Tage · **Priorität:** v1.2.0
+
+---
+
 ## 📅 Versions-Plan
 
 ```
-v1.1.1 ✅ (aktuell)
+v1.1.1 ✅ (aktuell stabil)
   - Hotfixes, Cleanup, E-Mail-Infrastruktur fertig
+
+v1.2.0-dev 🚧 (aktiv)
+  - PDF-Benennung + Workspace-Unterordner ✅
+  - PDF im System-Viewer öffnen ✅
+  - Zahlungserfassung mit Zahlungsart ✅
+  - Pipeline-UI-Verbesserungen ✅
+  - Nummernkreis für Projekte (Proj-Nummer) ✅
 
 v1.1.2 (~2-3h, nächste Woche)
   - BUG-8:  "Coming soon"-Banner entfernen (5 Min)
   - BUG-9:  Node-v24-Check mac/install.sh (10 Min)
   - BUG-10: App-Icons erstellen (20 Min)
   - BUG-11: project-files.txt aus Repo (1 Min)
+  - BUG-12: README.md auf GitHub aktualisieren (bereits fertig, push nötig)
   - TD-5:   buildNumber() extrahieren (30 Min)
   - TD-6:   .env.example Kommentar korrigieren (1 Min)
   - F-1:    E-Mail-Status in Dokumentenliste (0.5 Tage)
 
 v1.2.0 (~2-3 Wochen)
   - BUG-4:  Input-Validierung mit Zod (1 Tag)
-  - F-2:    Auto-Update (1 Tag)
-  - F-3:    DATEV EXTF-Format (1-2 Tage)
-  - F-4:    ZUGFeRD COMFORT (1 Tag)
-  - F-5:    Dashboard erweitern (1 Tag)
-  - F-6:    Rate Limiting (0.5 Tag)
+  - BUG-13: Medienimport-Reiter fertigstellen (1-2 Tage)
+  - BUG-15: Abschluss-Reiter ausbauen (0.5 Tage)
+  - F-1:    E-Mail vollständig (Pipeline-Integration, Log)
+  - F-5:    Auto-Update (1 Tag)
+  - F-6:    DATEV EXTF-Format (1-2 Tage)
+  - F-7:    ZUGFeRD COMFORT (1 Tag)
+  - F-8:    Dashboard erweitern (1 Tag)
+  - F-9:    Rate Limiting (0.5 Tag)
+  - F-11:   Korrespondenz-Reiter (0.5 Tage)
   - TD-1:   Kern-Tests (3-4 Tage)
   - TD-3:   ESLint + Prettier (2h)
+  - TD-7:   Logging (1 Tag)
+  - TD-8:   Testsystem / Dev-Helfer (0.5 Tage)
 
 v1.3.0 (~2-3 Wochen)
-  - TD-2:   God-Files aufsplitten (projektDetail, Settings)
-  - F-7:    Linux-Support (1 Tag)
+  - TD-2:   God-Files aufsplitten (ProjectDetail, Settings)
+  - F-10:   Linux-Support (1 Tag)
 
 v2.0.0 (Langfristig)
   - Authentifizierung (JWT)
@@ -343,6 +482,14 @@ v2.0.0 (Langfristig)
 | E-Mail-Infrastruktur | v1.1.1 | Backend + Modal + SMTP-Config + Test-Mail |
 | Beta-Blocker BB-1 bis BB-6 | v1.0 | Path Traversal, Atomare Writes, Race Condition, etc. |
 | Beta-Qualitätsziele BQ-1 bis BQ-7 | v1.0 | FiBu, Dashboard-Chart, iCal, DATEV CSV, etc. |
+| PDF-Benennung + Workspace-Unterordner | v1.2.0-dev | standardFilename, subfolder, GoBD-konform |
+| PDF im System-Viewer öffnen | v1.2.0-dev | generate-and-open-pdf IPC, shell.openPath |
+| Zahlungserfassung mit Zahlungsart | v1.2.0-dev | paidAt + paymentMethod, konfigurierbarer Chip |
+| Inhabername in allen Druckseiten | v1.2.0-dev | Inh.-Zeile immer sichtbar (v-if entfernt) |
+| Pipeline-UI Verbesserungen | v1.2.0-dev | Abrechnung-Panel, Vorgespräch-Panel, Notizen-Badge |
+| Nummernkreis für Projekte | v1.2.0-dev | DB-Migration v2, atomare Nummernvergabe, Ordnername = Projektnummer |
+| Dokumentenablage im Projektordner | v1.2.0-dev | AGB/DSGVO/ADV automatisch in vertraege/, Uploads direkt im Projektordner |
+| System-Reset (Service-Passwort) | v1.2.0-dev | DB+Workspace zurücksetzen, Demo-Kunde, Settings/Artikel/AGB bleiben erhalten |
 
 ---
 
@@ -350,12 +497,12 @@ v2.0.0 (Langfristig)
 
 | Kategorie | Anzahl | Priorität |
 |---|---|---|
-| Offene Bugs 🟠🟡🟢 | 5 (BUG-4, 8, 9, 10, 11) | v1.1.2 – v1.2.0 |
-| Technische Schulden | 6 (TD-1 bis TD-6) | v1.1.2 – v1.3.0 |
-| Features | 7 (F-1 bis F-7) | v1.1.2 – v1.3.0 |
+| Offene Bugs 🟠🟡🟢 | 7 (BUG-4, 8, 9, 10, 11, 12, 13, 15) | v1.1.2 – v1.2.0 |
+| Technische Schulden | 8 (TD-1 bis TD-8) | v1.1.2 – v1.3.0 |
+| Features | 10 (F-1 bis F-11, ohne F-4 ✅) | v1.1.2 – v1.3.0 |
 
-**Bottom Line:** PixFrameWorkspace ist produktionsreif. Kein kritischer Bug blockiert die Nutzung. Nächster sinnvoller Schritt: v1.1.2 Hotfix (~2-3h) um die kleinen Restarbeiten zu erledigen, dann E-Mail-Versand vollständig fertigstellen.
+**Bottom Line:** PixFrameWorkspace ist produktionsreif. Kein kritischer Bug blockiert die Nutzung. Die v1.2.0 bringt die fehlenden Pipeline-Reiter (Medienimport, Abschluss), ADV/DSGVO-Projektbindung, E-Mail-Vollintegration und Logging. Vorher ist ein schneller v1.1.2-Hotfix sinnvoll (~2-3h) für die kleinen Restarbeiten.
 
 ---
 
-*PixFrameWorkspace · v1.1.1 · April 2026 · © Markus Emanuel*
+*PixFrameWorkspace · v1.2.0-dev · April 2026 · © Markus Emanuel*

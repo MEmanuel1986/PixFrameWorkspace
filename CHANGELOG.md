@@ -4,13 +4,128 @@
 
 ---
 
+## v1.2.0-dev — PDF-Workspace, Pipeline-Buttons, Zahlungserfassung, Projektnummern
+
+*02.–05. April 2026*
+
+### System-Reset (geschützt durch Service-Passwort)
+
+* Neuer API-Endpunkt `POST /api/reset/execute` — setzt Datenbank und Workspace auf Werkszustand zurück
+* Neuer API-Endpunkt `POST /api/reset/validate` — prüft Service-Passwort ohne Reset
+* Service-Passwort = heutiges Datum rückwärts (z.B. 05.04. → `4050`), täglich wechselnd
+* Datenbank-Reset in einer Transaktion: löscht Kunden, Projekte, Dokumente, FiBu, Holiday-Cache
+* Ein Demo-Kunde (K-00001, Marie Mustermann) wird automatisch angelegt
+* Alle Counters werden zurückgesetzt (customer=1, Rest=0)
+* Workspace-Ordner `auftraege/` und `buchhaltung/belege/` werden geleert
+* **Behalten:** Settings (Firmendaten, Vertragstexte, AGB, DSGVO, ADV), Artikel, Schema-Version, Logo
+* Frontend: Reset-Karte im System-Tab mit Warnhinweisen, Passwort-Eingabe und confirm-Dialog
+* Vorher/Nachher-Statistik wird in der Erfolgsmeldung angezeigt
+* Neue Dateien: `resetService.js`, `resetController.js`, `routes/reset.js`
+
+### Dokumentenablage: Alle Dateien im Projektordner
+
+* **AGB, DSGVO, ADV** werden beim Erstellen des Vertrags automatisch als PDF im Projektordner `vertraege/` abgelegt
+* Frontend übergibt `projectId` als Query-Parameter an statische PDF-Routen (`/api/pdf/agb?projectId=xxx`)
+* `resolveProjectContext()` in `workspace.js` erkennt jetzt AGB/DSGVO/ADV-Vertrag-Routen mit Projektbezug
+* Neue Hilfsfunktion `extractQueryParam()` für URL-Query-Parameter-Extraktion
+* **Hochgeladene unterschriebene Verträge** landen direkt im Projektordner `vertraege/` statt in `uploads/contracts/`
+* **Hochgeladene unterschriebene Nachträge** ebenso im Projektordner `vertraege/`
+* Alle Upload-Einträge speichern jetzt `absolutePath` für direkten Dateizugriff (rückwärtskompatibel mit Legacy-`url`-Feld)
+* Download-/Löschhandler (`downloadSignedContract`, `deleteSignedContract`, `downloadSignedAddendum`, `deleteSignedAddendum`) nutzen `absolutePath` mit Fallback auf Legacy-`url`
+* `projectController.js`: `resolveProjectFolder()`-Hilfsfunktion für Kunden- und Ordnernamen-Auflösung
+* Doppelte Methoden-Definitionen in `projectController.js` bereinigt
+
+### Buchhaltungsbelege im Workspace
+
+* Neuer Workspace-Ordner `buchhaltung/belege/` fuer FiBu-Belege (Ausgaben, Eingangsrechnungen)
+* `paths.js`: `BUCHHALTUNG_DIR` + `BUCHHALTUNG_BELEGE_DIR` als eigene Pfade, Auto-Erstellung beim Start
+* `fibuService._saveReceiptFile()` speichert Belege nach `buchhaltung/belege/` statt `uploads/belege/`
+* `app.js`: Neue statische Route `/buchhaltung` fuer Beleg-Auslieferung
+* Rueckwaertskompatibel: Alte Belege unter `/uploads/receipts/` bleiben erreichbar
+
+### PDF-Benennung & Unterordner-Logik
+
+* `backend/src/routes/workspace.js` komplett neu: `resolveProjectContext()` gibt `standardFilename` + `subfolder` zurück
+* Naming-Schema einheitlich:
+  * Angebote: `Angebot_A-2026-04_00001_Mueller.pdf` → `dokumente/`
+  * Rechnungen / Anzahlungsrechnungen / Storno / Korrektur → `dokumente/`
+  * Verträge: `Vertrag_V-2026-04_00001_Mueller.pdf` → `vertraege/`
+  * ADV: `ADV_Mueller.pdf` → `vertraege/`
+  * Nachträge: `Nachtrag_N1_Mueller.pdf` → `vertraege/`
+* `sanitizeForFilename()` + `buildCustomerLabel()` für sichere Dateinamen ohne Sonderzeichen
+* `workspaceService.savePdfToProject()` akzeptiert optionalen `subfolder`-Parameter (Default: `dokumente`)
+* GoBD-konform: Existierende Dateien werden nicht überschrieben, stattdessen Suffix `_v2`, `_v3`
+
+### PDF im System-Viewer öffnen (statt Drucken/Herunterladen)
+
+* `electron/preload.js`: neue IPC-Methode `generateAndOpenPDF(apiPath, options)`
+* `electron/main.js`:
+  * `savePdfToProjectFolder()` gibt jetzt den absoluten Pfad zurück
+  * Neuer IPC-Handler `generate-and-open-pdf`: erzeugt → speichert → öffnet via `shell.openPath()`
+  * Fallback ohne Projektbezug: temp-Datei in `os.tmpdir()`
+* `ProjectDetail.vue`: zentrale Funktion `openPdfInViewer(apiPath)` — Electron → Viewer, Fallback → Browser-Preview
+* Alle betroffenen Funktionen umgestellt: `openDocPrint`, `printQuote`, `downloadQuote`, `openContractPrint`, `printContract`, `downloadContract`, `openAdvPrint`, `openAddendumPrint`, `printAddendum`, `downloadAddendum`
+* 4 Pipeline-Komponenten: alle „📥 Drucken / Herunterladen"-Buttons umbenannt zu „📂 Öffnen"
+  * `ProjectPipelineAngebot.vue`: 1 Stelle
+  * `ProjectPipelineAnzahlung.vue`: 2 Stellen
+  * `ProjectPipelineVertrag.vue`: 3 Stellen
+  * `ProjectPipelineAbrechnung.vue`: 2 Stellen
+* Status wird beim Öffnen automatisch gesetzt: Angebote → Versendet, Verträge → Verschickt
+
+### Zahlungserfassung ausgebaut
+
+* Popup mit Pflichtfeldern Zahlungsdatum + Zahlungsart
+* Zahlungsinfo als grüner Badge direkt in der Rechnungszeile
+* Backend (`documentService`, `documentController`) persistiert `paidAt` + `paymentMethod`
+
+### Zahlungsarten konfigurierbar
+
+* „Kreditkarte" entfernt
+* Einstellungen → Buchung: neue Karte „Zahlungsarten" mit Checkbox-Chips
+* Verfügbar: Überweisung, Bar, PayPal, SEPA-Lastschrift, Vorkasse
+* Payment-Popup liest aktive Methoden dynamisch aus `settingsData.bookingTerms.enabledPaymentMethods`
+
+### Inhabername im Fußtext aller Dokumente
+
+* Alle 6 Druckseiten (`DocumentPrint`, `ContractPrint`, `AddendumPrint`, `AgbPrint`, `AdvPrint`, `BlankContractPrint`): `v-if="owner !== name"`-Bedingung entfernt → `Inh. {{ settings.company.owner }}` wird immer angezeigt
+
+### Pipeline-Reiter Verbesserungen
+
+* Abrechnung-Panel komplett neu (iqf-Layout): lila Header mit Live-Betrag, Auftragsübersicht-Sidebar, editierbare Positionsliste, Übernahme aus Angebot/Vertrag per Button, Anzahlung als negative Position, Anfahrt-Schnelleingabe, Artikelkatalog-Picker
+* Vorgespräch-Panel mit Auftragsübersicht (gleiches qo-Layout). Notizen landen mit Zeitstempel und Label `💬 Vorgespräch · Datum` in der Notizen-Kachel
+* Aktives Angebot immer oben (Sort: `!supersededBy` → Version DESC → createdAt DESC)
+* Angebotsformular startet leer — kein Auto-Prefill mehr aus Stundensatz/Pauschalpreis
+* Rechnungsadresse standardmäßig eingeklappt, zeigt Hinweis `(falls abweichend vom Kunden)`
+* USt.-Spalte wird bei §19-Kleinunternehmer ausgeblendet (`v-if="!isSmallBusiness"` auf `<th>` + `<td>`)
+* Notizen-Modal: Breite `min(70vw, 900px)`, Höhe `min(70vh, 900px)`, wächst mit dem Inhalt
+
+### Nummernkreis für Projekte (Projektnummer)
+
+* Neuer Nummernkreis `project` mit Default-Format `Proj-{jjjj}-{mm}/{z,5}`
+* `schema.sql`: Spalte `project_number TEXT` in `projects`-Tabelle + Index `idx_projects_number`
+* DB-Schema-Version v1→v2: Migration fügt Spalte + Counter per `ALTER TABLE` hinzu
+* `projectService.js`: Projektnummer wird bei `createProject()` atomar via `counterService.next('project')` generiert
+* `projectService.js`: eigene `_buildNumber()`-Methode für Format-Platzhalter-Ersetzung
+* Workspace-Ordnername ist jetzt die Projektnummer statt der Project-ID (z.B. `auftraege/K-00001/Proj-2026-04_00001/`)
+* `workspace.js`: `getProjectFolderKey()` für rückwärtskompatible Ordnerauflösung (alte Projekte behalten ID-basierte Ordner)
+* `Settings.vue`: Nummernkreis „Projektnummer“ in Einstellungen → Nummernkreise als erstes Schema unter „Dokumente“ sichtbar
+
+### Bugfixes
+
+* „Auftrag nicht gefunden": `watch(pipelineOpen,…)` stand vor der `ref()`-Deklaration → Temporal Dead Zone → ReferenceError → `setup()` crashtete. Fix: Watch nach `pipelineOpen`-Deklaration verschoben
+* Anzahlungsrechnung 19 % USt. trotz §19-Kleinunternehmer: `openDepositInvoice()` hatte `taxRate: 19` zweimal hardcodiert → jetzt `isSmallBusiness.value ? 0 : 19`
+* Anfrage-Notizen wanderten nicht in die Kachel: Bedingung `rawNotes !== project.value.notes` entfernt
+* CSS-Grid: `order` hat in Grid-Layouts keinen Effekt (nur Flexbox) → Fix: explizite `grid-column`-Zuweisung auf Sidebar und Main, `overflow: hidden` auf `.qo-body`
+
+---
+
 ## v1.1.1 — Hotfixes, Cleanup & E-Mail fertiggestellt
 
 *01. April 2026*
 
 ### Fixes & Aufräumen
 
-* `project-files.txt` aus Repository entfernt
+* `project-files.txt` aus Repository entfernt (→ noch offen, BUG-11)
 * `multer` Dependency entfernt — nicht genutzt, `express-fileupload` übernimmt alle Uploads
 * Versionsnummer im Health-Endpoint (`/api/health`) wird jetzt dynamisch aus `package.json` gelesen statt hardcoded
 
@@ -28,7 +143,7 @@
 
 * `mac/install.sh` hat noch keinen Node-v24-Versionscheck (nur Windows `install.ps1` hat diesen)
 * App-Icons unvollständig: `icon.icns` (macOS) und `icon.png` (Linux) fehlen → `npm run build` schlägt auf diesen Plattformen fehl
-* Settings-SMTP-Tab zeigt noch "coming soon"-Hinweistext trotz funktionierender Implementierung
+* Settings-SMTP-Tab zeigt noch „coming soon"-Hinweistext trotz funktionierender Implementierung
 
 ---
 
@@ -78,7 +193,7 @@
 * Puppeteer komplett entfernt (~150 MB Chromium-Download entfällt)
 * PDF-Generierung läuft über Electron IPC → verstecktes BrowserWindow → `printToPDF`
 * Alle 9 Print-Views mit „💾 PDF speichern" Toolbar-Button
-* Kopf-/Fußzeile gerendert via position:fixed CSS, Seitenzahlen via `counter(page)`
+* Kopf-/Fußzeile gerendert via `position:fixed` CSS, Seitenzahlen via `counter(page)`
 * PDFs werden automatisch im Projektordner abgelegt
 
 ### Holiday-Cache
@@ -178,7 +293,20 @@
 
 ---
 
-## v0–v172 — Fundament, Redesign, Leistungs-Features
+## v156–v172 — Pipeline-Reiter, Notizen-System, Kundenauswahl
+
+*März 2026*
+
+* NewAnfrageModal: Suchfeld sticky, Live-Zähler, Tastaturnavigation (↑↓ Enter), Avatar-Chips
+* `NewAnfragePage.vue` als eigenständige Route `/projects/new?customerId=xxx`
+* ProjectDetail Hero-Banner: Live-Daten-Update via `update:live`-Emit, Datum/Uhrzeit getrennt mit Icons
+* Location-Datalist: 17 Vorschläge für MV/Rostock (Studio, Warnemünde Strand, Schloss Gelbensande, Rügen usw.)
+* Notizen-Logik bereinigt: timestamped Einträge mit Source-Badge (💬 Vorgespräch, Anfrage)
+* Vorgespräch-Panel und Abrechnung-Panel in iqf/qo-Layout integriert
+
+---
+
+## v0–v155 — Fundament, Redesign, Leistungs-Features
 
 *06.–14. März 2026*
 
@@ -208,7 +336,8 @@
 | Kopf-/Fußzeile | v1.0.0-beta.2 | 25.03.2026 |
 | **SQLite + Electron + PDF** | **v1.1.0** | **26.–28.03.2026** |
 | **Hotfixes + E-Mail fertig** | **v1.1.1** | **01.04.2026** |
+| PDF-Workspace + Zahlungserfassung + Pipeline-UI + Projektnummern | **v1.2.0-dev** | **02.–05.04.2026** |
 
 ---
 
-*PixFrameWorkspace · v1.1.1 · April 2026*
+*PixFrameWorkspace · v1.2.0-dev · April 2026*

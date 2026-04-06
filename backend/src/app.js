@@ -56,6 +56,14 @@ app.use('/uploads', (req, res, next) => {
   next()
 }, express.static(paths.UPLOADS_DIR));
 
+// Buchhaltung: Belege, DATEV-Exporte etc.
+app.use('/buchhaltung', (req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Methods', 'GET')
+  res.setHeader('Cache-Control', 'public, max-age=3600')
+  next()
+}, express.static(paths.BUCHHALTUNG_DIR));
+
 // ━━━ Logging ━━━
 app.use((req, res, next) => {
   logger.info(`${req.method} ${req.path}`);
@@ -90,6 +98,7 @@ app.use('/api/holidays',  holidayRoutes);
 app.use('/api/email',     emailRoutes);
 app.use('/api/pdf',       pdfRoutes);
 app.use('/api/backup',    backupRoutes);
+app.use('/api/reset', require('./routes/reset'));
 app.use('/api/workspace', require('./routes/workspace'));
 
 // ━━━ 404 Handler ━━━

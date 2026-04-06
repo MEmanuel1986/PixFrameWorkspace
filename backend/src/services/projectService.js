@@ -10,6 +10,8 @@
 const { BaseRepository, generateId, rowToCamel } = require('./BaseRepository');
 const logger = require('../utils/logger');
 const workspaceService = require('./workspaceService');
+const counterService   = require('./counterService');
+const { getSettings }  = require('./settingsService');
 
 const PROJECT_JSON_FIELDS = [
   'contract_data', 'contract_addenda', 'signed_contracts',
@@ -120,6 +122,43 @@ class ProjectService extends BaseRepository {
     return flat;
   }
 
+  // ── Projektnummer generieren ──────────────────────────────────────────
+
+  _nextProjectNumber() {
+    const settings = getSettings();
+    const schema   = settings.numberSchemas?.project || {
+      format: 'Proj-{jjjj}-{mm}/{z,5}',
+    };
+    const counter = counterService.next('project');
+    return this._buildNumber(schema, counter);
+  }
+
+  _buildNumber(schema, counter) {
+    if (schema.format) {
+      const now  = new Date();
+      const yyyy = String(now.getFullYear());
+      const mm   = String(now.getMonth() + 1).padStart(2, '0');
+      const dd   = String(now.getDate()).padStart(2, '0');
+      return schema.format
+        .replace(/\{jjjj\}/gi, yyyy).replace(/\{jj\}/gi, yyyy.slice(2))
+        .replace(/\{mm\}/gi, mm).replace(/\{tt\}/gi, dd)
+        .replace(/\{datum\}/gi, `${dd}.${mm}.${yyyy}`)
+        .replace(/\{z,(\d+)\}/gi, (_, d) => String(counter).padStart(Number(d), '0'))
+        .replace(/\{zj,(\d+)\}/gi, (_, d) => String(counter).padStart(Number(d), '0'))
+        .replace(/\{zm,(\d+)\}/gi, (_, d) => String(counter).padStart(Number(d), '0'))
+        .replace(/\{zt,(\d+)\}/gi, (_, d) => String(counter).padStart(Number(d), '0'))
+        .replace(/\{z\}/gi, String(counter));
+    }
+    // Legacy
+    const padded = String(counter).padStart(schema.digits || 5, '0');
+    const parts  = [schema.prefix];
+    const sep    = schema.separator ?? '-';
+    if (schema.useYear)  parts.push(new Date().getFullYear());
+    if (schema.useMonth) parts.push(String(new Date().getMonth() + 1).padStart(2, '0'));
+    const inner = schema.innerSeparator !== undefined ? schema.innerSeparator : '/';
+    return `${parts.join(sep)}${inner}${padded}`;
+  }
+
   // ── Öffentliche API ───────────────────────────────────────────────
 
   getAllProjects() {
@@ -152,6 +191,10 @@ class ProjectService extends BaseRepository {
     const flat = this._flattenForDb(data);
     const id = data.id || generateId('projects');
 
+    // Projektnummer atomar generieren
+    const projectNumber = this._nextProjectNumber();
+    flat.projectNumber = projectNumber;
+
     this.db.transaction(() => {
       flat.id = id;
       this.insert(flat);
@@ -160,11 +203,11 @@ class ProjectService extends BaseRepository {
 
     const created = this.getProjectById(id);
 
-    // Projektordner im Workspace anlegen
+    // Projektordner im Workspace anlegen (Projektnummer als Ordnername)
     try {
       const custRow = this.db.prepare('SELECT customer_number FROM customers WHERE id = ?').get(data.customerId);
       const customerNumber = custRow?.customer_number || 'unbekannt';
-      const folderPath = workspaceService.initProjectFolder(customerNumber, id, created.projectName);
+      const folderPath = workspaceService.initProjectFolder(customerNumber, projectNumber, created.projectName);
       // Pfad in der DB speichern
       this.db.prepare('UPDATE projects SET project_folder_path = ? WHERE id = ?').run(folderPath, id);
       created.projectFolderPath = folderPath;

@@ -1,0 +1,141 @@
+[2026-03-28T16:22:59.125Z] [INFO] 🗄️  SQLite geöffnet: C:\Users\m.emanuel\Desktop\PixFrameWorkspace\backend\data\pixframe.sqlite (NEU) 
+[2026-03-28T16:22:59.134Z] [INFO] 🏗️  Erstelle Schema v1 ... 
+[2026-03-28T16:22:59.140Z] [INFO] ✅ Schema erstellt. 
+[2026-03-28T16:22:59.142Z] [INFO] 🌱 Lege 17 Standardartikel an ... 
+[2026-03-28T16:22:59.144Z] [INFO] ✅ 17 Standardartikel angelegt, Counter = 17 
+[2026-03-28T16:22:59.145Z] [INFO] ✅ Datenbank bereit. 
+[2026-03-28T16:24:23.795Z] [INFO] 🗄️  SQLite geöffnet: C:\Users\m.emanuel\Desktop\PixFrameWorkspace\backend\data\pixframe.sqlite (vorhanden) 
+[2026-03-28T16:24:23.801Z] [INFO] 📊 Schema v1 ist aktuell. 
+[2026-03-28T16:24:23.802Z] [INFO] ✅ Datenbank bereit. 
+[2026-03-28T16:24:24.134Z] [INFO] HEAD /api/health 
+[2026-03-28T16:25:15.450Z] [INFO] GET /api/customers 
+[2026-03-28T16:25:15.456Z] [INFO] GET /api/suppliers 
+[2026-03-28T16:25:15.459Z] [INFO] GET /api/projects 
+[2026-03-28T16:25:15.462Z] [INFO] GET /api/documents 
+[2026-03-28T16:25:15.496Z] [INFO] GET /api/settings 
+[2026-03-28T16:25:22.556Z] [INFO] GET /api/settings 
+[2026-03-28T16:25:22.573Z] [INFO] GET /api/backup/list 
+[2026-03-28T16:25:22.576Z] [INFO] GET /api/backup/list 
+[2026-03-28T16:25:35.640Z] [INFO] GET /api/backup/list 
+[2026-03-28T16:26:09.532Z] [INFO] POST /api/backup/import 
+[2026-03-28T16:26:09.612Z] [INFO] 🔒 Datenbank geschlossen. 
+[2026-03-28T16:26:09.615Z] [INFO] 🗄️  SQLite geöffnet: C:\Users\m.emanuel\Desktop\PixFrameWorkspace\backend\data\pixframe.sqlite (vorhanden) 
+[2026-03-28T16:26:09.624Z] [INFO] 📊 Schema v1 ist aktuell. 
+[2026-03-28T16:26:09.625Z] [INFO] ✅ Datenbank bereit. 
+[2026-03-28T16:26:11.579Z] [INFO] GET /api/settings 
+[2026-03-28T16:26:11.598Z] [INFO] GET /api/backup/list 
+[2026-03-28T16:26:11.602Z] [INFO] GET /api/backup/list 
+[2026-03-28T16:26:21.898Z] [INFO] GET /api/customers 
+[2026-03-28T16:26:21.899Z] [ERROR] Error occurred "The database connection is not open"
+[2026-03-28T16:26:21.901Z] [INFO] GET /api/suppliers 
+[2026-03-28T16:26:21.903Z] [INFO] GET /api/projects 
+[2026-03-28T16:26:21.905Z] [ERROR] Error occurred "The database connection is not open"
+[2026-03-28T16:26:21.907Z] [INFO] GET /api/documents 
+[2026-03-28T16:26:21.908Z] [ERROR] Error occurred "The database connection is not open"
+[2026-03-28T16:26:21.911Z] [INFO] GET /api/settings 
+[2026-03-28T16:26:36.648Z] [INFO] GET /api/settings 
+[2026-03-28T16:26:36.663Z] [INFO] GET /api/backup/list 
+[2026-03-28T16:26:36.666Z] [INFO] GET /api/backup/list 
+[2026-03-28T16:26:44.319Z] [INFO] GET /api/settings 
+[2026-03-28T16:27:08.561Z] [INFO] GET /api/settings 
+[2026-03-28T16:27:15.510Z] [INFO] GET /api/customers 
+[2026-03-28T16:27:15.511Z] [ERROR] Error occurred "The database connection is not open"
+[2026-03-28T16:27:15.512Z] [INFO] GET /api/suppliers 
+[2026-03-28T16:27:15.514Z] [INFO] GET /api/projects 
+[2026-03-28T16:27:15.515Z] [ERROR] Error occurred "The database connection is not open"
+[2026-03-28T16:27:15.516Z] [INFO] GET /api/documents 
+[2026-03-28T16:27:15.517Z] [ERROR] Error occurred "The database connection is not open"
+[2026-03-28T16:27:15.521Z] [INFO] GET /api/settings 
+[2026-03-28T16:27:36.979Z] [INFO] POST /api/customers 
+[2026-03-28T16:27:36.985Z] [INFO] ✅ Kunde erstellt: customers_bba50869 — K-00002 
+[2026-03-28T16:27:36.990Z] [INFO] POST /api/projects 
+[2026-03-28T16:27:36.992Z] [INFO] ✅ Auftrag erstellt: projects_40319f3f "Neue Anfrage"
+[2026-03-28T16:27:37.466Z] [INFO] GET /api/articles 
+[2026-03-28T16:27:37.469Z] [INFO] GET /api/settings 
+[2026-03-28T16:27:37.475Z] [INFO] GET /api/documents/project/projects_40319f3f 
+[2026-03-28T16:27:42.622Z] [INFO] PUT /api/projects/projects_40319f3f 
+[2026-03-28T16:27:42.625Z] [INFO] ✅ Auftrag aktualisiert: projects_40319f3f 
+[2026-03-28T16:27:42.629Z] [INFO] PUT /api/projects/projects_40319f3f 
+[2026-03-28T16:27:42.631Z] [INFO] ✅ Auftrag aktualisiert: projects_40319f3f 
+[2026-03-28T16:27:51.208Z] [INFO] GET /api/projects/next-contract-number 
+[2026-03-28T16:27:58.090Z] [INFO] GET /api/settings 
+[2026-03-28T16:27:58.100Z] [INFO] GET /api/articles 
+[2026-03-28T16:28:00.882Z] [INFO] POST /api/documents/generate 
+[2026-03-28T16:28:00.886Z] [INFO] ✅ Rechnung erstellt: RE-2026-03/00001 
+[2026-03-28T16:28:00.890Z] [INFO] GET /api/documents 
+[2026-03-28T16:28:00.891Z] [ERROR] Error occurred "The database connection is not open"
+[2026-03-28T16:28:00.895Z] [INFO] GET /api/documents 
+[2026-03-28T16:28:00.896Z] [ERROR] Error occurred "The database connection is not open"
+[2026-03-28T16:28:00.898Z] [INFO] GET /api/documents 
+[2026-03-28T16:28:00.899Z] [ERROR] Error occurred "The database connection is not open"
+[2026-03-28T16:28:00.902Z] [INFO] GET /api/documents/project/projects_40319f3f 
+[2026-03-28T16:28:03.132Z] [INFO] GET /api/documents/documents_d86b5303 
+[2026-03-28T16:28:03.134Z] [INFO] GET /api/settings 
+[2026-03-28T16:28:03.148Z] [INFO] GET /api/customers/customers_bba50869 
+[2026-03-28T16:28:03.151Z] [INFO] GET /api/projects/projects_40319f3f 
+[2026-03-28T16:28:50.334Z] [INFO] GET /api/settings 
+[2026-03-28T16:28:50.339Z] [INFO] GET /api/articles 
+[2026-03-28T16:28:53.294Z] [INFO] POST /api/documents/documents_d86b5303/correct 
+[2026-03-28T16:28:53.297Z] [INFO] ✅ Korrekturrechnung: KOR-RE-2026-03/00001 
+[2026-03-28T16:28:53.300Z] [INFO] GET /api/documents 
+[2026-03-28T16:28:53.302Z] [ERROR] Error occurred "The database connection is not open"
+[2026-03-28T16:28:53.307Z] [INFO] GET /api/documents 
+[2026-03-28T16:28:53.308Z] [ERROR] Error occurred "The database connection is not open"
+[2026-03-28T16:28:53.311Z] [INFO] GET /api/documents 
+[2026-03-28T16:28:53.312Z] [ERROR] Error occurred "The database connection is not open"
+[2026-03-28T16:28:53.314Z] [INFO] GET /api/documents 
+[2026-03-28T16:28:53.315Z] [ERROR] Error occurred "The database connection is not open"
+[2026-03-28T16:28:53.317Z] [INFO] GET /api/documents/project/projects_40319f3f 
+[2026-03-28T16:28:53.321Z] [INFO] GET /api/documents/project/projects_40319f3f 
+[2026-03-28T16:28:55.658Z] [INFO] GET /api/documents/documents_bfd7231e 
+[2026-03-28T16:28:55.660Z] [INFO] GET /api/settings 
+[2026-03-28T16:28:55.677Z] [INFO] GET /api/customers/customers_bba50869 
+[2026-03-28T16:28:55.680Z] [INFO] GET /api/projects/projects_40319f3f 
+[2026-03-28T16:31:13.013Z] [INFO] PUT /api/projects/projects_40319f3f 
+[2026-03-28T16:31:13.017Z] [INFO] ✅ Auftrag aktualisiert: projects_40319f3f 
+[2026-03-28T16:31:13.021Z] [INFO] PUT /api/projects/projects_40319f3f 
+[2026-03-28T16:31:13.026Z] [INFO] ✅ Auftrag aktualisiert: projects_40319f3f 
+[2026-03-28T16:33:55.681Z] [INFO] GET /api/documents/documents_d86b5303 
+[2026-03-28T16:33:55.683Z] [INFO] GET /api/settings 
+[2026-03-28T16:33:55.691Z] [INFO] GET /api/projects/projects_40319f3f 
+[2026-03-28T16:33:55.694Z] [INFO] GET /api/customers/customers_bba50869 
+[2026-03-28T16:34:19.239Z] [INFO] GET /api/projects/next-contract-number 
+[2026-03-28T16:34:20.649Z] [INFO] GET /api/projects/next-contract-number 
+[2026-03-28T16:34:20.837Z] [INFO] GET /api/projects/next-contract-number 
+[2026-03-28T16:34:21.043Z] [INFO] GET /api/projects/next-contract-number 
+[2026-03-28T16:34:41.659Z] [INFO] GET /api/projects/next-contract-number 
+[2026-03-28T16:39:54.534Z] [INFO] GET /api/settings 
+[2026-03-28T16:39:54.543Z] [INFO] GET /api/backup/list 
+[2026-03-28T16:39:54.547Z] [INFO] GET /api/backup/list 
+[2026-03-28T16:39:58.148Z] [INFO] GET /api/backup/list 
+[2026-03-28T16:40:00.499Z] [INFO] POST /api/backup/create 
+[2026-03-28T16:40:00.566Z] [INFO] GET /api/backup/list 
+[2026-03-28T16:40:14.643Z] [INFO] PUT /api/settings 
+[2026-03-28T17:19:23.529Z] [INFO] GET /api/customers 
+[2026-03-28T17:19:23.531Z] [ERROR] Error occurred "The database connection is not open"
+[2026-03-28T17:19:23.534Z] [INFO] GET /api/projects 
+[2026-03-28T17:19:23.535Z] [ERROR] Error occurred "The database connection is not open"
+[2026-03-28T17:19:23.538Z] [INFO] GET /api/suppliers 
+[2026-03-28T17:19:23.540Z] [INFO] GET /api/documents 
+[2026-03-28T17:19:23.542Z] [ERROR] Error occurred "The database connection is not open"
+[2026-03-28T17:19:23.546Z] [INFO] GET /api/settings 
+[2026-03-28T17:19:26.868Z] [INFO] GET /api/settings 
+[2026-03-28T17:19:26.874Z] [INFO] GET /api/documents/project/projects_40319f3f 
+[2026-03-28T17:19:35.049Z] [INFO] GET /api/projects/next-contract-number 
+[2026-03-28T17:20:16.936Z] [INFO] PUT /api/projects/projects_40319f3f 
+[2026-03-28T17:20:16.940Z] [INFO] ✅ Auftrag aktualisiert: projects_40319f3f 
+[2026-03-28T17:20:16.947Z] [INFO] PUT /api/projects/projects_40319f3f 
+[2026-03-28T17:20:16.951Z] [INFO] ✅ Auftrag aktualisiert: projects_40319f3f 
+[2026-03-28T17:20:16.957Z] [INFO] GET /api/projects 
+[2026-03-28T17:20:16.959Z] [ERROR] Error occurred "The database connection is not open"
+[2026-03-28T17:20:34.456Z] [INFO] GET /api/settings 
+[2026-03-28T17:20:34.463Z] [INFO] GET /api/articles 
+[2026-03-28T17:20:43.090Z] [INFO] POST /api/documents/generate 
+[2026-03-28T17:20:43.095Z] [INFO] ✅ Angebot erstellt: A-2026-03/00002 
+[2026-03-28T17:20:43.099Z] [INFO] GET /api/documents 
+[2026-03-28T17:20:43.101Z] [ERROR] Error occurred "The database connection is not open"
+[2026-03-28T17:20:43.106Z] [INFO] GET /api/documents 
+[2026-03-28T17:20:43.108Z] [ERROR] Error occurred "The database connection is not open"
+[2026-03-28T17:20:43.112Z] [INFO] GET /api/documents/project/projects_40319f3f 
+[2026-03-28T17:20:57.095Z] [INFO] GET /api/projects/next-contract-number 
+[2026-03-28T17:51:22.083Z] [INFO] 🔒 Datenbank geschlossen. 

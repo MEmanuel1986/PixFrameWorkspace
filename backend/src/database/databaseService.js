@@ -8,7 +8,7 @@ const path     = require('path');
 const fs       = require('fs');
 const logger   = require('../utils/logger');
 
-const CURRENT_SCHEMA_VERSION = 1;
+const CURRENT_SCHEMA_VERSION = 2;
 
 class DatabaseService {
   constructor() {
@@ -92,7 +92,7 @@ class DatabaseService {
   _seedDefaults() {
     this._db.transaction(() => {
       const ins = this._db.prepare('INSERT OR IGNORE INTO counters (type, value) VALUES (?, ?)');
-      for (const type of ['invoice', 'quote', 'customer', 'article', 'supplier']) {
+      for (const type of ['invoice', 'quote', 'customer', 'article', 'supplier', 'project']) {
         ins.run(type, 0);
       }
     })();
@@ -188,7 +188,18 @@ class DatabaseService {
       return;
     }
     logger.info(`📊 Migration: v${v} → v${CURRENT_SCHEMA_VERSION}`);
-    const migrations = {};
+    const migrations = {
+      1: () => {
+        // v1 → v2: Projektnummer-Spalte + Counter
+        const cols = this._db.prepare("PRAGMA table_info('projects')").all().map(c => c.name);
+        if (!cols.includes('project_number')) {
+          this._db.exec('ALTER TABLE projects ADD COLUMN project_number TEXT');
+          this._db.exec('CREATE INDEX IF NOT EXISTS idx_projects_number ON projects(project_number)');
+          logger.info('  ➕ projects.project_number hinzugefügt');
+        }
+        this._db.prepare("INSERT OR IGNORE INTO counters (type, value) VALUES ('project', 0)").run();
+      },
+    };
     this._db.transaction(() => {
       for (let i = v; i < CURRENT_SCHEMA_VERSION; i++) {
         if (migrations[i]) { migrations[i](); }

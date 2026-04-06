@@ -1,0 +1,87 @@
+[2026-04-02T15:36:49.561Z] [INFO] 🗄️  SQLite geöffnet: C:\Users\m.emanuel\Desktop\PixFrameWorkspace\backend\data\pixframe.sqlite (vorhanden) 
+[2026-04-02T15:36:49.568Z] [INFO] 📊 Schema v1 ist aktuell. 
+[2026-04-02T15:36:49.569Z] [INFO] ✅ Datenbank bereit. 
+[2026-04-02T15:36:50.575Z] [INFO] GET /api/health 
+[2026-04-02T15:36:52.644Z] [INFO] GET /api/customers 
+[2026-04-02T15:36:52.648Z] [INFO] GET /api/suppliers 
+[2026-04-02T15:36:52.650Z] [INFO] GET /api/documents 
+[2026-04-02T15:36:52.655Z] [INFO] GET /api/projects 
+[2026-04-02T15:36:52.700Z] [INFO] GET /api/settings 
+[2026-04-02T15:37:03.173Z] [INFO] GET /api/settings 
+[2026-04-02T15:37:03.195Z] [INFO] HEAD /uploads/logo/logo.png 
+[2026-04-02T15:37:03.198Z] [INFO] GET /api/backup/list 
+[2026-04-02T15:37:03.203Z] [INFO] GET /api/backup/list 
+[2026-04-02T15:37:07.968Z] [INFO] GET /api/workspace/info 
+[2026-04-02T15:37:40.702Z] [INFO] GET /api/customers 
+[2026-04-02T15:37:40.705Z] [INFO] GET /api/projects 
+[2026-04-02T15:37:40.709Z] [INFO] GET /api/suppliers 
+[2026-04-02T15:37:40.712Z] [INFO] GET /api/documents 
+[2026-04-02T15:37:40.723Z] [INFO] GET /api/settings 
+[2026-04-02T15:37:43.180Z] [INFO] GET /api/articles 
+[2026-04-02T15:37:43.183Z] [INFO] GET /api/settings 
+[2026-04-02T15:37:43.190Z] [INFO] GET /api/documents/project/projects_40319f3f 
+[2026-04-02T15:37:59.909Z] [INFO] GET /api/settings 
+[2026-04-02T15:37:59.916Z] [INFO] HEAD /uploads/logo/logo.png 
+[2026-04-02T15:37:59.919Z] [INFO] GET /api/backup/list 
+[2026-04-02T15:37:59.923Z] [INFO] GET /api/backup/list 
+[2026-04-02T15:38:06.955Z] [INFO] GET /api/workspace/info 
+[2026-04-02T15:38:28.255Z] [INFO] GET /api/customers 
+[2026-04-02T15:38:28.257Z] [INFO] GET /api/suppliers 
+[2026-04-02T15:38:28.258Z] [INFO] GET /api/documents 
+[2026-04-02T15:38:28.262Z] [INFO] GET /api/projects 
+[2026-04-02T15:38:28.302Z] [INFO] GET /api/settings 
+[2026-04-02T15:38:36.439Z] [INFO] GET /api/settings 
+[2026-04-02T15:38:36.455Z] [INFO] HEAD /uploads/logo/logo.png 
+[2026-04-02T15:38:36.457Z] [INFO] GET /api/backup/list 
+[2026-04-02T15:38:36.459Z] [INFO] GET /api/backup/list 
+[2026-04-02T15:38:39.022Z] [INFO] GET /api/workspace/info 
+[2026-04-02T15:39:17.502Z] [INFO] GET /api/workspace/info 
+[2026-04-02T15:39:27.034Z] [INFO] GET /api/customers 
+[2026-04-02T15:39:27.035Z] [INFO] GET /api/suppliers 
+[2026-04-02T15:39:27.037Z] [INFO] GET /api/projects 
+[2026-04-02T15:39:27.039Z] [INFO] GET /api/documents 
+[2026-04-02T15:39:27.083Z] [INFO] GET /api/settings 
+[2026-04-02T15:39:32.752Z] [INFO] GET /api/settings 
+[2026-04-02T15:39:32.769Z] [INFO] HEAD /uploads/logo/logo.png 
+[2026-04-02T15:39:32.770Z] [INFO] GET /api/backup/list 
+[2026-04-02T15:39:32.772Z] [INFO] GET /api/backup/list 
+[2026-04-02T15:39:34.947Z] [INFO] GET /api/workspace/info 
+[2026-04-02T15:39:51.464Z] [INFO] GET /api/customers 
+[2026-04-02T15:39:51.467Z] [INFO] GET /api/suppliers 
+[2026-04-02T15:39:51.469Z] [INFO] GET /api/projects 
+[2026-04-02T15:39:51.472Z] [INFO] GET /api/documents 
+[2026-04-02T15:39:51.479Z] [INFO] GET /api/settings 
+[2026-04-02T15:39:52.915Z] [INFO] GET /api/articles 
+[2026-04-02T15:39:52.918Z] [INFO] GET /api/settings 
+[2026-04-02T15:39:52.926Z] [INFO] GET /api/documents/project/projects_40319f3f 
+[2026-04-02T15:39:55.949Z] [INFO] PATCH /api/documents/documents_569a6f87/status 
+[2026-04-02T15:39:55.958Z] [INFO] GET /api/documents 
+[2026-04-02T15:39:55.966Z] [INFO] GET /api/documents/project/projects_40319f3f 
+[2026-04-02T15:39:56.196Z] [INFO] GET /api/documents/documents_569a6f87 
+[2026-04-02T15:39:56.199Z] [INFO] GET /api/settings 
+[2026-04-02T15:39:56.207Z] [INFO] GET /uploads/logo/logo.png 
+[2026-04-02T15:39:56.210Z] [INFO] GET /api/projects/projects_40319f3f 
+[2026-04-02T15:39:56.213Z] [INFO] GET /api/customers/customers_bba50869 
+[2026-04-02T15:39:57.962Z] [INFO] POST /api/workspace/save-pdf 
+[2026-04-02T15:39:57.966Z] [INFO] 📄 PDF gespeichert: auftraege\K-00002\projects_40319f3f\dokumente\Dokument.pdf 
+[2026-04-02T18:03:12.819Z] [INFO] GET /api/settings 
+[2026-04-02T18:03:12.828Z] [INFO] HEAD /uploads/logo/logo.png 
+[2026-04-02T18:03:12.831Z] [INFO] GET /api/backup/list 
+[2026-04-02T18:03:12.834Z] [INFO] GET /api/backup/list 
+[2026-04-02T18:03:15.361Z] [INFO] GET /api/workspace/info 
+[2026-04-02T18:14:58.673Z] [INFO] 🔒 Datenbank geschlossen. 
+[2026-04-02T18:15:07.925Z] [INFO] 🗄️  SQLite geöffnet: C:\Users\m.emanuel\Desktop\PixFrameWorkspace\backend\data\pixframe.sqlite (vorhanden) 
+[2026-04-02T18:15:07.929Z] [INFO] 📊 Schema v1 ist aktuell. 
+[2026-04-02T18:15:07.930Z] [INFO] ✅ Datenbank bereit. 
+[2026-04-02T18:15:08.923Z] [INFO] GET /api/health 
+[2026-04-02T18:15:11.025Z] [INFO] GET /api/customers 
+[2026-04-02T18:15:11.031Z] [INFO] GET /api/suppliers 
+[2026-04-02T18:15:11.033Z] [INFO] GET /api/projects 
+[2026-04-02T18:15:11.037Z] [INFO] GET /api/documents 
+[2026-04-02T18:15:11.070Z] [INFO] GET /api/settings 
+[2026-04-02T18:15:17.357Z] [INFO] GET /api/settings 
+[2026-04-02T18:15:17.376Z] [INFO] HEAD /uploads/logo/logo.png 
+[2026-04-02T18:15:17.378Z] [INFO] GET /api/backup/list 
+[2026-04-02T18:15:17.383Z] [INFO] GET /api/backup/list 
+[2026-04-02T18:15:19.736Z] [INFO] GET /api/workspace/info 
+[2026-04-02T18:15:44.064Z] [INFO] GET /api/workspace/info 

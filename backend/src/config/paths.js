@@ -17,7 +17,9 @@
  *   │           ├── medien/videos/
  *   │           ├── vertraege/
  *   │           └── korrespondenz/
- *   ├── uploads/          ← Logo, Belege
+ *   ├── buchhaltung/      ← FiBu-Belege, DATEV-Exporte
+ *   │   └── belege/
+ *   ├── uploads/          ← Logo, Kundenfotos
  *   ├── backups/
  *   └── logs/
  */
@@ -60,6 +62,8 @@ const AUFTRAEGE_DIR = path.join(WORKSPACE_DIR, 'auftraege');
 const UPLOADS_DIR   = path.join(WORKSPACE_DIR, 'uploads');
 const BACKUPS_DIR   = path.join(WORKSPACE_DIR, 'backups');
 const LOGS_DIR      = path.join(WORKSPACE_DIR, 'logs');
+const BUCHHALTUNG_DIR       = path.join(WORKSPACE_DIR, 'buchhaltung');
+const BUCHHALTUNG_BELEGE_DIR = path.join(BUCHHALTUNG_DIR, 'belege');
 
 // ── Upload-Unterordner ─────────────────────────────────────────────────
 const LOGO_DIR      = path.join(UPLOADS_DIR, 'logo');
@@ -71,7 +75,8 @@ const TEMP_DIR = os.tmpdir();
 
 // ── Basis-Verzeichnisse sicherstellen ──────────────────────────────────
 [DATA_DIR, AUFTRAEGE_DIR, UPLOADS_DIR, BACKUPS_DIR, LOGS_DIR,
- LOGO_DIR, RECEIPTS_DIR, CONTRACTS_DIR]
+ LOGO_DIR, RECEIPTS_DIR, CONTRACTS_DIR,
+ BUCHHALTUNG_DIR, BUCHHALTUNG_BELEGE_DIR]
   .forEach(dir => {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   });
@@ -147,6 +152,8 @@ module.exports = {
   LOGO_DIR,
   RECEIPTS_DIR,
   CONTRACTS_DIR,
+  BUCHHALTUNG_DIR,
+  BUCHHALTUNG_BELEGE_DIR,
   TEMP_DIR,
 
   // Funktionen

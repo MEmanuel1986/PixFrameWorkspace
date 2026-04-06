@@ -1,5 +1,7 @@
-const projectService  = require('../services/projectService');
-const settingsService = require('../services/settingsService');
+const projectService   = require('../services/projectService');
+const settingsService  = require('../services/settingsService');
+const customerService  = require('../services/customerService');
+const workspaceService = require('../services/workspaceService');
 const path           = require('path');
 const fs             = require('fs');
 const paths          = require('../config/paths');
@@ -7,6 +9,23 @@ const paths          = require('../config/paths');
 function loadSettings() {
   try { return settingsService.getSettings(); }
   catch { return {}; }
+}
+
+/**
+ * Loest den Projektordner-Schluessel auf.
+ * Gibt { customerNumber, folderKey } zurueck oder null.
+ */
+function resolveProjectFolder(projectId) {
+  try {
+    const project  = projectService.getProjectById(projectId);
+    if (!project) return null;
+    const customer = customerService.getCustomerById(project.customerId);
+    if (!customer) return null;
+    const folderKey = project.projectFolderPath
+      ? path.basename(project.projectFolderPath)
+      : (project.projectNumber || project.id);
+    return { customerNumber: customer.customerNumber, folderKey };
+  } catch { return null; }
 }
 
 function buildNumber(schema, counter) {
@@ -39,7 +58,6 @@ function nextAddendumNumber(projectId) {
   const schema   = settings.numberSchemas?.addendum || {
     prefix: 'VN', separator: '-', innerSeparator: '/', digits: 5, useYear: true, useMonth: true,
   };
-  // Count all addenda across all projects that have an addendumNumber
   const allProjects = projectService.getAllProjects();
   const allAddenda  = allProjects.flatMap(p => p.contractAddenda || []);
   const nums = allAddenda
@@ -53,108 +71,57 @@ function nextAddendumNumber(projectId) {
 }
 
 class ProjectController {
-  /**
-   * GET /api/projects - Alle Projekte abrufen
-   */
   async getAll(req, res, next) {
     try {
       const { status, type, search } = req.query;
-
       let projects;
-      if (search) {
-        projects = projectService.searchProjects(search);
-      } else if (status) {
-        projects = projectService.getProjectsByStatus(status);
-      } else if (type) {
-        projects = projectService.getProjectsByType(type);
-      } else {
-        projects = projectService.getAllProjects();
-      }
-
-      res.json({
-        success: true,
-        count: projects.length,
-        data: projects,
-      });
-    } catch (err) {
-      next(err);
-    }
+      if (search)       projects = projectService.searchProjects(search);
+      else if (status)  projects = projectService.getProjectsByStatus(status);
+      else if (type)    projects = projectService.getProjectsByType(type);
+      else              projects = projectService.getAllProjects();
+      res.json({ success: true, count: projects.length, data: projects });
+    } catch (err) { next(err); }
   }
 
-  /**
-   * GET /api/projects/:id - Ein Projekt abrufen
-   */
   async getById(req, res, next) {
     try {
       const project = projectService.getProjectById(req.params.id);
       res.json({ success: true, data: project });
-    } catch (err) {
-      res.status(404).json({ error: err.message });
-    }
+    } catch (err) { res.status(404).json({ error: err.message }); }
   }
 
-  /**
-   * GET /api/projects/customer/:customerId - Alle Projekte eines Kunden
-   */
   async getByCustomer(req, res, next) {
     try {
       const projects = projectService.getProjectsByCustomerId(req.params.customerId);
-      res.json({
-        success: true,
-        count: projects.length,
-        data: projects,
-      });
-    } catch (err) {
-      next(err);
-    }
+      res.json({ success: true, count: projects.length, data: projects });
+    } catch (err) { next(err); }
   }
 
-  /**
-   * POST /api/projects - Neues Projekt erstellen
-   */
   async create(req, res, next) {
     try {
       const project = projectService.createProject(req.body);
       res.status(201).json({ success: true, data: project });
-    } catch (err) {
-      res.status(400).json({ error: err.message });
-    }
+    } catch (err) { res.status(400).json({ error: err.message }); }
   }
 
-  /**
-   * PUT /api/projects/:id - Projekt aktualisieren
-   */
   async update(req, res, next) {
     try {
       const project = projectService.updateProject(req.params.id, req.body);
       res.json({ success: true, data: project });
-    } catch (err) {
-      res.status(400).json({ error: err.message });
-    }
+    } catch (err) { res.status(400).json({ error: err.message }); }
   }
 
-  /**
-   * DELETE /api/projects/:id - Projekt löschen
-   */
   async delete(req, res, next) {
     try {
       const result = projectService.deleteProject(req.params.id);
       res.json({ success: true, data: result });
-    } catch (err) {
-      res.status(404).json({ error: err.message });
-    }
+    } catch (err) { res.status(404).json({ error: err.message }); }
   }
 
-  // ─── Unterzeichnete Verträge ────────────────────────────────────
+  // ─── Unterzeichnete Vertraege ────────────────────────────────────
 
-  /**
-   * POST /api/projects/:id/contracts — Unterzeichneten Vertrag hochladen
-   */
   async uploadSignedContract(req, res) {
-    const path = require('path');
-    const fs   = require('fs');
     const crypto = require('crypto');
-      const uuidv4 = () => crypto.randomUUID();
     try {
       if (!req.files || !req.files.contract) {
         return res.status(400).json({ error: 'Keine Datei hochgeladen' });
@@ -166,186 +133,77 @@ class ProjectController {
         return res.status(400).json({ error: `Nur ${allowed.join(', ')} erlaubt` });
       }
       if (file.size > 30 * 1024 * 1024) {
-        return res.status(400).json({ error: 'Datei zu groß (max. 30 MB)' });
+        return res.status(400).json({ error: 'Datei zu gross (max. 30 MB)' });
       }
       const projectId = req.params.id;
-      const dir = path.join(paths.CONTRACTS_DIR, projectId);
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      const id        = crypto.randomUUID();
+      const safeName  = 'Vertrag_unterschrieben_' + id.slice(0, 8) + ext;
 
-      const id       = uuidv4();
-      const safeName = id + ext;
-      const dest     = path.join(dir, safeName);
-
-      file.mv(dest, (err) => {
-        if (err) return res.status(500).json({ error: err.message });
-        const entry = {
-          id,
-          originalName: file.name,
-          url:          `/uploads/contracts/${projectId}/${safeName}`,
-          size:         file.size,
-          ext:          ext.replace('.', '').toUpperCase(),
-          uploadedAt:   new Date().toISOString(),
-        };
-        // Persist entry in project
-        const project = projectService.getProjectById(projectId);
-        if (!project.signedContracts) project.signedContracts = [];
-        project.signedContracts.push(entry);
-        projectService.updateProject(projectId, { signedContracts: project.signedContracts });
-        res.json({ success: true, data: entry });
-      });
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  }
-
-  /**
-   * DELETE /api/projects/:id/contracts/:cid — Vertrag löschen
-   */
-  async deleteSignedContract(req, res) {
-    const path = require('path');
-    const fs   = require('fs');
-    try {
-      const { id, cid } = req.params;
-      const project = projectService.getProjectById(id);
-      const entry   = (project.signedContracts || []).find(c => c.id === cid);
-      if (!entry) return res.status(404).json({ error: 'Nicht gefunden' });
-
-      // Delete file
-      const filePath = path.join(paths.BACKEND_DIR, entry.url);
-      try { if (fs.existsSync(filePath)) fs.unlinkSync(filePath); } catch {}
-
-      // Remove from array
-      project.signedContracts = project.signedContracts.filter(c => c.id !== cid);
-      projectService.updateProject(id, { signedContracts: project.signedContracts });
-      res.json({ success: true });
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  }
-
-  /**
-   * GET /api/projects/:id/contracts/:cid/download — Vertrag herunterladen
-   */
-  async downloadSignedContract(req, res) {
-    const path = require('path');
-    const fs   = require('fs');
-    try {
-      const { id, cid } = req.params;
-      const project = projectService.getProjectById(id);
-      const entry   = (project.signedContracts || []).find(c => c.id === cid);
-      if (!entry) return res.status(404).json({ error: 'Nicht gefunden' });
-      const filePath = path.join(paths.BACKEND_DIR, entry.url);
-      if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Datei nicht gefunden' });
-      res.download(filePath, entry.originalName);
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  }
-
-  // ─── Unterzeichnete Nachträge ─────────────────────────────────────
-
-  /**
-   * POST /api/projects/:id/addenda/:addendumId/sign
-   * Unterzeichneten Nachtrag hochladen
-   */
-  async uploadSignedAddendum(req, res) {
-    const path   = require('path');
-    const fs     = require('fs');
-    const crypto = require('crypto');
-    const uuidv4 = () => crypto.randomUUID();
-    try {
-      const { id, addendumId } = req.params;
-      if (!req.files || !req.files.addendum) {
-        return res.status(400).json({ error: 'Keine Datei hochgeladen (Feldname: addendum)' });
+      const pf = resolveProjectFolder(projectId);
+      let dest;
+      if (pf) {
+        const folder = paths.projectSubfolder(pf.customerNumber, pf.folderKey, 'vertraege');
+        if (!fs.existsSync(folder)) fs.mkdirSync(folder, { recursive: true });
+        dest = path.join(folder, safeName);
+      } else {
+        const dir = path.join(paths.CONTRACTS_DIR, projectId);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        dest = path.join(dir, safeName);
       }
-      const project = projectService.getProjectById(id);
-      if (!project) return res.status(404).json({ error: 'Projekt nicht gefunden' });
-
-      const addenda = project.contractAddenda || [];
-      const idx     = addenda.findIndex(a => a.id === addendumId);
-      if (idx === -1) return res.status(404).json({ error: 'Nachtrag nicht gefunden' });
-
-      const file     = req.files.addendum;
-      const ext      = path.extname(file.name).toLowerCase();
-      const safeName = file.name.replace(/[^a-zA-Z0-9.\-_äöüÄÖÜß ]/g,'_').replace(/\s+/g,'_');
-      const dir      = path.join(paths.CONTRACTS_DIR, id, 'addenda', addendumId);
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      const dest = path.join(dir, safeName);
 
       await new Promise((resolve, reject) =>
         file.mv(dest, e => e ? reject(e) : resolve())
       );
 
       const entry = {
-        id:           uuidv4(),
+        id,
         originalName: file.name,
         safeName,
+        absolutePath: dest,
+        url:          pf ? null : `/uploads/contracts/${projectId}/${safeName}`,
         size:         file.size,
-        ext:          ext.replace('.','').toUpperCase(),
-        url:          `/uploads/contracts/${id}/addenda/${addendumId}/${safeName}`,
+        ext:          ext.replace('.', '').toUpperCase(),
         uploadedAt:   new Date().toISOString(),
       };
-
-      // Store on the addendum object
-      addenda[idx] = { ...addenda[idx], signedFile: entry };
-      projectService.updateProject(id, { contractAddenda: addenda });
-
+      const project = projectService.getProjectById(projectId);
+      if (!project.signedContracts) project.signedContracts = [];
+      project.signedContracts.push(entry);
+      projectService.updateProject(projectId, { signedContracts: project.signedContracts });
       res.json({ success: true, data: entry });
-    } catch (e) {
-      res.status(500).json({ error: e.message });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
     }
   }
 
-  /**
-   * DELETE /api/projects/:id/addenda/:addendumId/sign
-   */
-  async deleteSignedAddendum(req, res) {
-    const path = require('path');
-    const fs   = require('fs');
+  async deleteSignedContract(req, res) {
     try {
-      const { id, addendumId } = req.params;
+      const { id, cid } = req.params;
       const project = projectService.getProjectById(id);
-      const addenda = project.contractAddenda || [];
-      const idx     = addenda.findIndex(a => a.id === addendumId);
-      if (idx === -1) return res.status(404).json({ error: 'Nachtrag nicht gefunden' });
-
-      const entry = addenda[idx].signedFile;
-      if (entry) {
-        const filePath = path.join(paths.BACKEND_DIR, entry.url);
-        if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-      }
-      addenda[idx] = { ...addenda[idx], signedFile: null };
-      projectService.updateProject(id, { contractAddenda: addenda });
+      const entry   = (project.signedContracts || []).find(c => c.id === cid);
+      if (!entry) return res.status(404).json({ error: 'Nicht gefunden' });
+      const filePath = entry.absolutePath || (entry.url ? path.join(paths.BACKEND_DIR, entry.url) : null);
+      try { if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath); } catch {}
+      project.signedContracts = project.signedContracts.filter(c => c.id !== cid);
+      projectService.updateProject(id, { signedContracts: project.signedContracts });
       res.json({ success: true });
-    } catch (e) {
-      res.status(500).json({ error: e.message });
-    }
+    } catch (err) { res.status(500).json({ error: err.message }); }
   }
 
-  /**
-   * GET /api/projects/:id/addenda/:addendumId/sign/download
-   */
-  async downloadSignedAddendum(req, res) {
-    const path = require('path');
-    const fs   = require('fs');
+  async downloadSignedContract(req, res) {
     try {
-      const { id, addendumId } = req.params;
+      const { id, cid } = req.params;
       const project = projectService.getProjectById(id);
-      const add     = (project.contractAddenda || []).find(a => a.id === addendumId);
-      if (!add || !add.signedFile) return res.status(404).json({ error: 'Kein unterzeichneter Nachtrag vorhanden' });
-      const filePath = path.join(paths.BACKEND_DIR, add.signedFile.url);
-      if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Datei nicht gefunden' });
-      res.download(filePath, add.signedFile.originalName);
-    } catch (e) {
-      res.status(500).json({ error: e.message });
-    }
+      const entry   = (project.signedContracts || []).find(c => c.id === cid);
+      if (!entry) return res.status(404).json({ error: 'Nicht gefunden' });
+      const filePath = entry.absolutePath || (entry.url ? path.join(paths.BACKEND_DIR, entry.url) : null);
+      if (!filePath || !fs.existsSync(filePath)) return res.status(404).json({ error: 'Datei nicht gefunden' });
+      res.download(filePath, entry.originalName);
+    } catch (err) { res.status(500).json({ error: err.message }); }
   }
 
-  // ─── Unterzeichnete Nachträge ─────────────────────────────────────────
+  // ─── Unterzeichnete Nachtraege ─────────────────────────────────────────
 
   async uploadSignedAddendum(req, res) {
-    const path   = require('path');
-    const fs     = require('fs');
     const crypto = require('crypto');
     try {
       const { id, addendumId } = req.params;
@@ -358,19 +216,29 @@ class ProjectController {
 
       const file     = req.files.addendum;
       const ext      = path.extname(file.name).toLowerCase();
-      const safeName = `signed_${addendumId}${ext}`;
-      const dir      = path.join(paths.CONTRACTS_DIR, id, 'addenda');
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      const dest = path.join(dir, safeName);
+      const safeName = `Nachtrag_unterschrieben_${addendumId.slice(0, 8)}${ext}`;
+
+      const pf = resolveProjectFolder(id);
+      let dest;
+      if (pf) {
+        const folder = paths.projectSubfolder(pf.customerNumber, pf.folderKey, 'vertraege');
+        if (!fs.existsSync(folder)) fs.mkdirSync(folder, { recursive: true });
+        dest = path.join(folder, safeName);
+      } else {
+        const dir = path.join(paths.CONTRACTS_DIR, id, 'addenda');
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        dest = path.join(dir, safeName);
+      }
       await new Promise((resolve, reject) => file.mv(dest, e => e ? reject(e) : resolve()));
 
       const entry = {
         id:           crypto.randomUUID(),
         originalName: file.name,
         safeName,
+        absolutePath: dest,
         size:         file.size,
         ext:          ext.replace('.', '').toUpperCase(),
-        url:          `/uploads/contracts/${id}/addenda/${safeName}`,
+        url:          pf ? null : `/uploads/contracts/${id}/addenda/${safeName}`,
         uploadedAt:   new Date().toISOString(),
       };
       addenda[idx] = { ...addenda[idx], signedFile: entry };
@@ -380,8 +248,6 @@ class ProjectController {
   }
 
   async deleteSignedAddendum(req, res) {
-    const path = require('path');
-    const fs   = require('fs');
     try {
       const { id, addendumId } = req.params;
       const project = projectService.getProjectById(id);
@@ -390,8 +256,8 @@ class ProjectController {
       if (idx === -1) return res.status(404).json({ error: 'Nachtrag nicht gefunden' });
       const entry = addenda[idx].signedFile;
       if (entry) {
-        const fp = path.join(paths.BACKEND_DIR, entry.url);
-        if (fs.existsSync(fp)) fs.unlinkSync(fp);
+        const fp = entry.absolutePath || (entry.url ? path.join(paths.BACKEND_DIR, entry.url) : null);
+        if (fp && fs.existsSync(fp)) fs.unlinkSync(fp);
       }
       addenda[idx] = { ...addenda[idx], signedFile: null };
       projectService.updateProject(id, { contractAddenda: addenda });
@@ -400,39 +266,34 @@ class ProjectController {
   }
 
   async downloadSignedAddendum(req, res) {
-    const path = require('path');
-    const fs   = require('fs');
     try {
       const { id, addendumId } = req.params;
       const project = projectService.getProjectById(id);
       const add = (project.contractAddenda || []).find(a => a.id === addendumId);
       if (!add?.signedFile) return res.status(404).json({ error: 'Kein unterzeichneter Nachtrag' });
-      const fp = path.join(paths.BACKEND_DIR, add.signedFile.url);
-      if (!fs.existsSync(fp)) return res.status(404).json({ error: 'Datei nicht gefunden' });
+      const fp = add.signedFile.absolutePath || (add.signedFile.url ? path.join(paths.BACKEND_DIR, add.signedFile.url) : null);
+      if (!fp || !fs.existsSync(fp)) return res.status(404).json({ error: 'Datei nicht gefunden' });
       res.download(fp, add.signedFile.originalName);
     } catch (e) { res.status(500).json({ error: e.message }); }
   }
 
   // ─── Nummernvergabe ──────────────────────────────────────────────
 
-  /** GET /api/projects/next-contract-number */
   getNextContractNumber(req, res) {
     try {
       res.json({ success: true, data: { number: nextContractNumber() } });
     } catch (e) { res.status(500).json({ error: e.message }); }
   }
 
-  /** GET /api/projects/next-addendum-number */
   getNextAddendumNumber(req, res) {
     try {
       res.json({ success: true, data: { number: nextAddendumNumber() } });
     } catch (e) { res.status(500).json({ error: e.message }); }
   }
 
-  /** POST /api/projects/:id/customer-photo — Kundenfoto hochladen */
+  // ─── Kundenfoto ──────────────────────────────────────────────────
+
   async uploadCustomerPhoto(req, res) {
-    const path   = require('path');
-    const fs     = require('fs');
     const crypto = require('crypto');
     try {
       if (!req.files?.photo) {
@@ -445,7 +306,7 @@ class ProjectController {
         return res.status(400).json({ error: `Nur Bilder erlaubt (${allowed.join(', ')})` });
       }
       if (file.size > 20 * 1024 * 1024) {
-        return res.status(400).json({ error: 'Datei zu groß (max. 20 MB)' });
+        return res.status(400).json({ error: 'Datei zu gross (max. 20 MB)' });
       }
       const projectId = req.params.id;
       const dir = path.join(paths.UPLOADS_DIR, 'customer-photos', projectId);
@@ -476,10 +337,7 @@ class ProjectController {
     }
   }
 
-  /** DELETE /api/projects/:id/customer-photo — Kundenfoto löschen */
   deleteCustomerPhoto(req, res) {
-    const path = require('path');
-    const fs   = require('fs');
     try {
       const projectId = req.params.id;
       const project   = projectService.getProjectById(projectId);

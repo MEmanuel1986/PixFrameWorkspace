@@ -244,12 +244,13 @@ class FibuService {
 
   async _saveReceiptFile(file) {
     if (!file) return null;
-    const receiptsDir = require('../config/paths').RECEIPTS_DIR;
+    const appPaths = require('../config/paths');
+    const receiptsDir = appPaths.BUCHHALTUNG_BELEGE_DIR;
     if (!fs.existsSync(receiptsDir)) fs.mkdirSync(receiptsDir, { recursive: true });
     const safeName = Date.now() + '_' + (file.name || 'receipt').replace(/[^a-zA-Z0-9._-]/g, '_');
     const dest = path.join(receiptsDir, safeName);
     await new Promise((resolve, reject) => file.mv(dest, err => err ? reject(err) : resolve()));
-    return `/uploads/receipts/${safeName}`;
+    return `/buchhaltung/belege/${safeName}`;
   }
 }
 

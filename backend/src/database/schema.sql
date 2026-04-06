@@ -110,6 +110,7 @@ CREATE TABLE IF NOT EXISTS projects (
     budget_amount       REAL NOT NULL DEFAULT 0,
     budget_currency     TEXT NOT NULL DEFAULT 'EUR',
     notes               TEXT NOT NULL DEFAULT '',
+    project_number      TEXT,
     project_folder_path TEXT NOT NULL DEFAULT '',
     description         TEXT NOT NULL DEFAULT '',
     delivery_date       TEXT,
@@ -129,6 +130,7 @@ CREATE TABLE IF NOT EXISTS projects (
     updated_at          TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_projects_customer ON projects(customer_id);
+CREATE INDEX IF NOT EXISTS idx_projects_number   ON projects(project_number);
 CREATE INDEX IF NOT EXISTS idx_projects_status   ON projects(status);
 CREATE INDEX IF NOT EXISTS idx_projects_booking  ON projects(booking);
 

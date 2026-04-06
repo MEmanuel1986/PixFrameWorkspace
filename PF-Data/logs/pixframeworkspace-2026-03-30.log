@@ -1,0 +1,93 @@
+[2026-03-30T04:33:50.089Z] [INFO] 🗄️  SQLite geöffnet: C:\Users\m.emanuel\Desktop\PixFrameWorkspace\backend\data\pixframe.sqlite (vorhanden) 
+[2026-03-30T04:33:50.098Z] [INFO] 📊 Schema v1 ist aktuell. 
+[2026-03-30T04:33:50.101Z] [INFO] ✅ Datenbank bereit. 
+[2026-03-30T04:33:50.413Z] [INFO] HEAD /api/health 
+[2026-03-30T04:33:57.410Z] [INFO] GET /api/customers 
+[2026-03-30T04:33:57.413Z] [INFO] GET /api/projects 
+[2026-03-30T04:33:57.415Z] [INFO] GET /api/suppliers 
+[2026-03-30T04:33:57.418Z] [INFO] GET /api/documents 
+[2026-03-30T04:33:57.471Z] [INFO] GET /api/settings 
+[2026-03-30T04:34:07.570Z] [INFO] GET /api/articles 
+[2026-03-30T04:34:07.575Z] [INFO] GET /api/settings 
+[2026-03-30T04:34:07.580Z] [INFO] GET /api/documents/project/projects_40319f3f 
+[2026-03-30T04:34:16.277Z] [INFO] GET /api/projects/next-contract-number 
+[2026-03-30T04:34:16.308Z] [INFO] PUT /api/projects/projects_40319f3f 
+[2026-03-30T04:34:16.316Z] [INFO] ✅ Auftrag aktualisiert: projects_40319f3f 
+[2026-03-30T04:34:16.322Z] [INFO] PUT /api/projects/projects_40319f3f 
+[2026-03-30T04:34:16.323Z] [INFO] ✅ Auftrag aktualisiert: projects_40319f3f 
+[2026-03-30T04:34:16.329Z] [INFO] POST /api/documents 
+[2026-03-30T04:34:16.331Z] [INFO] ✅ Dokument erstellt: documents_04e2bd72 
+[2026-03-30T04:34:16.334Z] [INFO] POST /api/documents 
+[2026-03-30T04:34:16.336Z] [INFO] ✅ Dokument erstellt: documents_4f7979ac 
+[2026-03-30T04:34:16.339Z] [INFO] POST /api/documents 
+[2026-03-30T04:34:16.340Z] [INFO] ✅ Dokument erstellt: documents_f57a9c04 
+[2026-03-30T04:34:16.342Z] [INFO] GET /api/documents/project/projects_40319f3f 
+[2026-03-30T04:34:57.186Z] [INFO] GET /api/customers 
+[2026-03-30T04:34:57.189Z] [INFO] GET /api/suppliers 
+[2026-03-30T04:34:57.192Z] [INFO] GET /api/projects 
+[2026-03-30T04:34:57.195Z] [INFO] GET /api/documents 
+[2026-03-30T04:34:57.258Z] [INFO] GET /api/settings 
+[2026-03-30T04:35:03.083Z] [INFO] GET /api/articles 
+[2026-03-30T04:35:03.087Z] [INFO] GET /api/settings 
+[2026-03-30T04:35:03.092Z] [INFO] GET /api/documents/project/projects_40319f3f 
+[2026-03-30T04:35:28.098Z] [INFO] GET /api/settings 
+[2026-03-30T04:35:28.113Z] [INFO] GET /api/articles 
+[2026-03-30T04:35:31.708Z] [INFO] POST /api/documents/documents_da452a9b/revise 
+[2026-03-30T04:35:31.713Z] [INFO] ✅ Dokument v2 erstellt: A-2026-03/00002-v2 
+[2026-03-30T04:35:31.718Z] [INFO] GET /api/documents 
+[2026-03-30T04:35:31.727Z] [INFO] GET /api/documents 
+[2026-03-30T04:35:31.733Z] [INFO] GET /api/documents/project/projects_40319f3f 
+[2026-03-30T04:35:39.667Z] [INFO] GET /api/customers 
+[2026-03-30T04:35:39.670Z] [INFO] GET /api/suppliers 
+[2026-03-30T04:35:39.672Z] [INFO] GET /api/projects 
+[2026-03-30T04:35:39.676Z] [INFO] GET /api/documents 
+[2026-03-30T04:35:39.683Z] [INFO] GET /api/settings 
+[2026-03-30T04:35:41.431Z] [INFO] GET /api/settings 
+[2026-03-30T04:35:41.437Z] [INFO] GET /api/documents/project/projects_47750842 
+[2026-03-30T04:35:59.488Z] [INFO] PUT /api/projects/projects_47750842 
+[2026-03-30T04:35:59.492Z] [INFO] ✅ Auftrag aktualisiert: projects_47750842 
+[2026-03-30T04:35:59.500Z] [INFO] PUT /api/projects/projects_47750842 
+[2026-03-30T04:35:59.504Z] [INFO] ✅ Auftrag aktualisiert: projects_47750842 
+[2026-03-30T04:35:59.510Z] [INFO] GET /api/projects 
+[2026-03-30T04:36:12.063Z] [INFO] GET /api/projects/next-contract-number 
+[2026-03-30T04:36:12.070Z] [INFO] PUT /api/projects/projects_47750842 
+[2026-03-30T04:36:12.072Z] [INFO] ✅ Auftrag aktualisiert: projects_47750842 
+[2026-03-30T04:36:12.078Z] [INFO] PUT /api/projects/projects_47750842 
+[2026-03-30T04:36:12.081Z] [INFO] ✅ Auftrag aktualisiert: projects_47750842 
+[2026-03-30T04:36:12.090Z] [INFO] POST /api/documents 
+[2026-03-30T04:36:12.092Z] [INFO] ✅ Dokument erstellt: documents_5c33b270 
+[2026-03-30T04:36:12.096Z] [INFO] POST /api/documents 
+[2026-03-30T04:36:12.099Z] [INFO] ✅ Dokument erstellt: documents_60c740da 
+[2026-03-30T04:36:12.102Z] [INFO] POST /api/documents 
+[2026-03-30T04:36:12.105Z] [INFO] ✅ Dokument erstellt: documents_4fc8aad0 
+[2026-03-30T04:36:12.108Z] [INFO] GET /api/documents/project/projects_47750842 
+[2026-03-30T04:51:33.145Z] [INFO] GET /api/settings 
+[2026-03-30T04:51:33.160Z] [INFO] GET /api/backup/list 
+[2026-03-30T04:51:33.165Z] [INFO] GET /api/backup/list 
+[2026-03-30T11:40:24.861Z] [INFO] GET /api/settings 
+[2026-03-30T11:40:25.100Z] [INFO] GET /api/backup/list 
+[2026-03-30T11:40:25.122Z] [INFO] GET /api/backup/list 
+[2026-03-30T11:58:19.102Z] [INFO] GET /api/settings 
+[2026-03-30T11:58:19.125Z] [INFO] GET /api/backup/list 
+[2026-03-30T11:58:19.131Z] [INFO] GET /api/backup/list 
+[2026-03-30T12:33:48.162Z] [INFO] GET /api/settings 
+[2026-03-30T12:33:48.232Z] [INFO] GET /api/backup/list 
+[2026-03-30T12:33:48.240Z] [INFO] GET /api/backup/list 
+[2026-03-30T17:53:02.308Z] [INFO] 🔒 Datenbank geschlossen. 
+[2026-03-30T20:35:39.967Z] [INFO] 🗄️  SQLite geöffnet: C:\Users\m.emanuel\Desktop\PixFrameWorkspace\backend\data\pixframe.sqlite (vorhanden) 
+[2026-03-30T20:35:39.974Z] [INFO] 📊 Schema v1 ist aktuell. 
+[2026-03-30T20:35:39.977Z] [INFO] ✅ Datenbank bereit. 
+[2026-03-30T20:35:40.329Z] [INFO] HEAD /api/health 
+[2026-03-30T20:39:03.533Z] [INFO] HEAD /api/health 
+[2026-03-30T20:50:19.511Z] [INFO] GET /api/customers 
+[2026-03-30T20:50:19.515Z] [INFO] GET /api/suppliers 
+[2026-03-30T20:50:19.518Z] [INFO] GET /api/documents 
+[2026-03-30T20:50:19.523Z] [INFO] GET /api/projects 
+[2026-03-30T20:50:19.556Z] [INFO] GET /api/settings 
+[2026-03-30T20:55:47.366Z] [INFO] 🔒 Datenbank geschlossen. 
+[2026-03-30T20:55:55.134Z] [INFO] 🗄️  SQLite geöffnet: C:\Users\m.emanuel\Desktop\PixFrameWorkspace\backend\data\pixframe.sqlite (vorhanden) 
+[2026-03-30T20:55:55.140Z] [INFO] 📊 Schema v1 ist aktuell. 
+[2026-03-30T20:55:55.142Z] [INFO] ✅ Datenbank bereit. 
+[2026-03-30T20:55:55.443Z] [INFO] HEAD /api/health 
+[2026-03-30T20:56:13.669Z] [INFO] GET /api/health 
+[2026-03-30T20:56:13.694Z] [INFO] GET /favicon.ico 
