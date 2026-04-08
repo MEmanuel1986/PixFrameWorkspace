@@ -1,6 +1,6 @@
 # PixFrameWorkspace — Roadmap & offene Punkte
 
-*Stand: v1.2.0-dev · 05. April 2026*
+*Stand: v1.2.0-dev · 06. April 2026*
 *Stack: Vue 3 + Pinia + Vite · Electron 30 · Node.js + Express · SQLite (better-sqlite3)*
 
 ---
@@ -61,6 +61,74 @@ app.post('/api/customers', (req, res) => {
 ```
 
 **Aufwand:** ~1 Tag · **Priorität:** v1.2.0
+
+---
+
+### 🔴 BUG-16 — Dokumente werden nicht persistent abgelegt bei "Speichern"
+
+**Status:** OFFEN
+
+Beim Klick auf "Speichern" oder "Neue Version" in den Pipeline-Stufen Angebot/Vertrag/Abrechnung wird das Dokument nur im Vue-State angezeigt, aber nicht als PDF im Workspace-Ordner abgelegt. Erst beim Klick auf "Öffnen" wird die PDF tatsächlich generiert und gespeichert.
+
+**Erwartung:** "Speichern" muss die PDF sofort im Projektordner ablegen und den Status von Entwurf auf Gespeichert ändern.
+
+**Ursache:** Der Speicher-Handler ruft vermutlich nicht `savePdfToProjectFolder` auf, sondern nur den DB-Eintrag. PDF-Erzeugung ist nur an den Öffnen-Button gekoppelt.
+
+**Aufwand:** ~4h · **Priorität:** v1.2.0 (Critical — Datenverlust-Risiko)
+
+---
+
+### 🔴 BUG-17 — "Öffnen"-Button erstellt neues Dokument statt bestehendes zu laden
+
+**Status:** OFFEN
+
+Beim Klick auf "Öffnen" eines bestehenden Dokuments (z.B. Angebot AG-2026-001) wird ein neues Dokument mit neuer Nummer erstellt statt das bestehende zu öffnen. Führt zu Duplikaten und unnötig hochgezählten Nummernkreisen.
+
+**Ursache:** Der Öffnen-Button nutzt vermutlich denselben `generateDocument()`-Pfad wie "Speichern" statt ein `fetchDocument()` / `openExistingPdf()`.
+
+**Aufwand:** ~4h · **Priorität:** v1.2.0 (Critical — Nummern-Duplikate)
+
+---
+
+### 🟠 BUG-18 — Vorgespräch-Termine synchronisieren nicht mit dem Kalender
+
+**Status:** OFFEN
+
+Termine aus dem Vorgespräch-Reiter (`consultation.date`) erscheinen nicht in der Kalender-View. Die Daten werden korrekt in der DB gespeichert, aber `Calendar.vue` → `allEvents` mappt nur `proj.booking` und `proj.deliveryDate` — das Vorgespräch-Datum wird nie ausgelesen.
+
+**Fix:** In `Calendar.vue` `allEvents` computed einen Block für `proj.consultationDate` ergänzen (analog zum Booking-Block).
+
+**Aufwand:** ~1h · **Priorität:** v1.2.0
+
+---
+
+### 🟡 BUG-19 — Auftragsübersicht im Angebot-Reiter: Layout-Anpassung
+
+**Status:** OFFEN
+
+Die Auftragsübersicht (Sidebar) steht im Angebot-Reiter links, soll aber nach rechts verschoben werden. Reine CSS-Änderung (`order`-Property auf `.qo-sidebar` und `.qo-main`).
+
+**Aufwand:** ~30min · **Priorität:** v1.2.0
+
+---
+
+### 🟡 BUG-20 — PDFs öffnen sich im Browser statt im System-PDF-Reader (prüfen)
+
+**Status:** OFFEN — Prüfen ob bereits durch v1.2.0-dev `generate-and-open-pdf` IPC behoben
+
+PDFs sollen sich beim Klick auf "Öffnen" im Betriebssystem-Standard-PDF-Reader öffnen, nicht im Electron-internen Browser-Viewer. `shell.openPath()` wurde in v1.2.0-dev implementiert, aber möglicherweise nicht an allen Stellen angebunden.
+
+**Aufwand:** ~1h (Verifizierung + ggf. restliche Stellen migrieren) · **Priorität:** v1.2.0
+
+---
+
+### 🟢 BUG-21 — Korrespondenz-Ordner und UI-Kacheln aus "Bearbeitungen" entfernen
+
+**Status:** OFFEN — ⚠️ Widerspricht F-11 (Korrespondenz-Reiter ausbauen). Entscheidung: F-11 streichen oder BUG-21 verwerfen?
+
+Im Bearbeitungen-Reiter werden Korrespondenz-Kacheln angezeigt, die nicht genutzt werden. Cleanup-Aufgabe.
+
+**Aufwand:** ~1h · **Priorität:** v1.2.0
 
 ---
 
@@ -427,6 +495,12 @@ v1.1.2 (~2-3h, nächste Woche)
   - F-1:    E-Mail-Status in Dokumentenliste (0.5 Tage)
 
 v1.2.0 (~2-3 Wochen)
+  - BUG-16: Dokumente nicht persistent abgelegt (4h) 🔴
+  - BUG-17: Öffnen erstellt neues Dokument (4h) 🔴
+  - BUG-18: Vorgespräch-Kalender-Sync (1h)
+  - BUG-19: Auftragsübersicht Layout rechts (30min)
+  - BUG-20: PDF im System-Viewer prüfen (1h)
+  - BUG-21: Korrespondenz-Cleanup (1h) — oder F-11 behalten?
   - BUG-4:  Input-Validierung mit Zod (1 Tag)
   - BUG-13: Medienimport-Reiter fertigstellen (1-2 Tage)
   - BUG-15: Abschluss-Reiter ausbauen (0.5 Tage)
@@ -436,7 +510,7 @@ v1.2.0 (~2-3 Wochen)
   - F-7:    ZUGFeRD COMFORT (1 Tag)
   - F-8:    Dashboard erweitern (1 Tag)
   - F-9:    Rate Limiting (0.5 Tag)
-  - F-11:   Korrespondenz-Reiter (0.5 Tage)
+  - F-11:   Korrespondenz-Reiter (0.5 Tage) — ⚠️ Entfällt wenn BUG-21 umgesetzt
   - TD-1:   Kern-Tests (3-4 Tage)
   - TD-3:   ESLint + Prettier (2h)
   - TD-7:   Logging (1 Tag)
@@ -497,11 +571,11 @@ v2.0.0 (Langfristig)
 
 | Kategorie | Anzahl | Priorität |
 |---|---|---|
-| Offene Bugs 🟠🟡🟢 | 7 (BUG-4, 8, 9, 10, 11, 12, 13, 15) | v1.1.2 – v1.2.0 |
+| Offene Bugs 🔴🟠🟡🟢 | 13 (BUG-4, 8–13, 15–21) | v1.1.2 – v1.2.0 |
 | Technische Schulden | 8 (TD-1 bis TD-8) | v1.1.2 – v1.3.0 |
 | Features | 10 (F-1 bis F-11, ohne F-4 ✅) | v1.1.2 – v1.3.0 |
 
-**Bottom Line:** PixFrameWorkspace ist produktionsreif. Kein kritischer Bug blockiert die Nutzung. Die v1.2.0 bringt die fehlenden Pipeline-Reiter (Medienimport, Abschluss), ADV/DSGVO-Projektbindung, E-Mail-Vollintegration und Logging. Vorher ist ein schneller v1.1.2-Hotfix sinnvoll (~2-3h) für die kleinen Restarbeiten.
+**Bottom Line:** PixFrameWorkspace ist produktionsreif für den Grundbetrieb. **Zwei kritische Pipeline-Bugs (BUG-16/17)** müssen vor produktiver Dokumentenerstellung behoben werden. Die v1.2.0 bringt die fehlenden Pipeline-Reiter (Medienimport, Abschluss), ADV/DSGVO-Projektbindung, E-Mail-Vollintegration und Logging. Vorher ist ein schneller v1.1.2-Hotfix sinnvoll (~2-3h) für die kleinen Restarbeiten.
 
 ---
 
