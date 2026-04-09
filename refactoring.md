@@ -31,11 +31,11 @@ Der Plan unten adressiert alle vier Dateien systematisch.
 
 Diese Dateien sind die größten Schmerzpunkte nach bestätigten Zeilenzahlen und sollten als erstes aufgeteilt werden.
 
-### 1.1 `frontend/src/pages/Settings.vue` → Tab-Komponenten aufteilen
+### ✅ 1.1 `frontend/src/pages/Settings.vue` → Tab-Komponenten aufteilen
 
-**Ist-Zustand:** ~3.200 Zeilen — 12+ Tabs als Monolith. Jeder Tab hat eigene Felder, Validierungslogik und API-Calls, alles in einer einzigen `.vue`-Datei. **Nicht testbar, kaum reviewbar.**
+**Status:** ERLEDIGT (v1.3.0-dev, 09.04.2026)
 
-**Lösung — Neue Struktur:**
+**Ergebnis:** 16 Dateien erstellt:
 
 ```
 frontend/src/pages/settings/
@@ -315,7 +315,7 @@ Vue 3 + Vite unterstützen TypeScript nativ. Da das Projekt noch in der Beta-Pha
 | Phase | Version | Inhalt | Aufwand |
 |-------|---------|--------|---------|
 | **Phase 1a** | v1.3.0 | `ProjectDetail.vue` (~4.700 Z.) → Composables + Koordinator | 2–3 Tage |
-| **Phase 1b** | v1.3.0 | `Settings.vue` (~3.200 Z.) → 12 Tab-Komponenten | 2–3 Tage |
+| **Phase 1b** | v1.3.0 | ✅ `Settings.vue` (~3.200 Z.) → 13 Tab-Komponenten + Pinia Store | **erledigt** |
 | **Phase 1c** | v1.3.0 | `ProjectPipelineVertrag.vue` (~1.700 Z.) → Subkomponenten | 2–3 Tage |
 | **Phase 1d** | v1.3.0 | `NewProjectForm.vue` (~1.400 Z.) → Formular + Kalkulator trennen | 1–2 Tage |
 | **Phase 1e** | v1.3.0 | `FiBu.vue` → 4 Tab-Komponenten + Export-Bar | 1–2 Tage |

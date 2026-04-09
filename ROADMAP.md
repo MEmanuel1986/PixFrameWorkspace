@@ -1,19 +1,20 @@
 # PixFrameWorkspace — Roadmap & offene Punkte
 
-*Stand: v1.2.0-dev · 06. April 2026*
+*Stand: v1.3.0-dev · 09. April 2026*
 *Stack: Vue 3 + Pinia + Vite · Electron 30 · Node.js + Express · SQLite (better-sqlite3)*
 
 ---
 
 ## 📊 Aktueller Zustand
 
-**v1.1.1 ist produktionsreif für Einzelnutzung. v1.2.0-dev ist aktiv in Entwicklung.**
+**v1.1.1 ist produktionsreif für Einzelnutzung. v1.3.0-dev ist aktiv in Entwicklung (Refactoring).**
 
-Vier große Migrationen abgeschlossen:
+Fünf große Migrationen abgeschlossen:
 - ✅ JSON → SQLite (15 Tabellen, WAL-Mode, Foreign Keys, Indizes)
 - ✅ Browser-App → Electron-Desktop (Workspace-Picker, Auto-Backup)
 - ✅ Puppeteer → Electron `printToPDF` (alle 9 Print-Views)
 - ✅ PDF-Benennung & Workspace-Unterordner (dokumente/ vs. vertraege/)
+- ✅ Settings.vue Refactoring → 13 Tab-Komponenten + Pinia Store (v1.3.0-dev)
 
 E-Mail-Versand teilweise implementiert:
 - ✅ Backend: `emailService.js`, Route `/api/email/send|test|config`
@@ -138,7 +139,7 @@ Im Bearbeitungen-Reiter werden Korrespondenz-Kacheln angezeigt, die nicht genutz
 
 Der SMTP-Tab zeigt noch den Text „Die SMTP-Anbindung wird in einer kommenden Version aktiviert", obwohl die Implementierung vollständig ist. Verwirrend für Nutzer.
 
-**Fix:** Banner-Text in `Settings.vue` entfernen (Zeile ~1130).
+**Fix:** Banner-Text in `SettingsTabEmail.vue` entfernen (`.s-coming-soon-banner` Block).
 
 **Aufwand:** 5 Minuten · **Priorität:** v1.1.2 Hotfix
 
@@ -259,6 +260,10 @@ Mit BaseRepository-Pattern und SQLite ist die Infrastruktur gut für Tests geeig
 | `Settings.vue` | ~3.200 | 12+ Tabs als Monolith |
 | `NewProjectForm.vue` | ~1.400 | B2B-Kalkulator + Formular vermischt |
 | `ProjectPipelineVertrag.vue` | ~1.700 | Vertragslogik größer als viele Apps |
+
+**Fortschritt:**
+- ✅ `Settings.vue` (~3.200 Z.) → 13 Tab-Komponenten + Pinia Store (v1.3.0-dev, 09.04.2026)
+- 🚧 `ProjectDetail.vue` (~4.700 Z.) — nächste Phase
 
 **Nicht testbar, kaum reviewbar, Regressionrisiko bei jeder Änderung.**
 
@@ -516,9 +521,15 @@ v1.2.0 (~2-3 Wochen)
   - TD-7:   Logging (1 Tag)
   - TD-8:   Testsystem / Dev-Helfer (0.5 Tage)
 
-v1.3.0 (~2-3 Wochen)
-  - TD-2:   God-Files aufsplitten (ProjectDetail, Settings)
+v1.3.0-dev 🚧 (aktiv — Refactoring)
+  - TD-2:   Settings.vue → 13 Tab-Komponenten + Pinia Store ✅
+  - TD-2:   ProjectDetail.vue → Composables (nächste Phase)
+  - TD-2:   FiBu.vue → Tab-Komponenten (geplant)
+  - TD-2:   NewProjectForm.vue → Kalkulator trennen (geplant)
+  - TD-2:   ProjectPipelineVertrag.vue → Subkomponenten (geplant)
   - F-10:   Linux-Support (1 Tag)
+
+v1.3.0 (~2-3 Wochen)
 
 v2.0.0 (Langfristig)
   - Authentifizierung (JWT)
@@ -564,6 +575,7 @@ v2.0.0 (Langfristig)
 | Nummernkreis für Projekte | v1.2.0-dev | DB-Migration v2, atomare Nummernvergabe, Ordnername = Projektnummer |
 | Dokumentenablage im Projektordner | v1.2.0-dev | AGB/DSGVO/ADV automatisch in vertraege/, Uploads direkt im Projektordner |
 | System-Reset (Service-Passwort) | v1.2.0-dev | DB+Workspace zurücksetzen, Demo-Kunde, Settings/Artikel/AGB bleiben erhalten |
+| **Settings.vue Refactoring** | **v1.3.0-dev** | **3.200 Z. → 13 Tab-Komponenten + Pinia Store (useSettingsFormStore)** |
 
 ---
 
@@ -579,4 +591,4 @@ v2.0.0 (Langfristig)
 
 ---
 
-*PixFrameWorkspace · v1.2.0-dev · April 2026 · © Markus Emanuel*
+*PixFrameWorkspace · v1.3.0-dev · April 2026 · © Markus Emanuel*

@@ -4,6 +4,34 @@
 
 ---
 
+## v1.3.0-dev — Refactoring Phase 1b: Settings.vue aufgeteilt
+
+*09. April 2026*
+
+### Refactoring: Settings.vue → 13 Tab-Komponenten + Pinia Store
+
+* `Settings.vue` (~3.200 Zeilen) aufgelöst in 16 Dateien:
+  * `pages/settings/SettingsPage.vue` — Tab-Navigation Shell (~70 Zeilen Template)
+  * 13 Tab-Komponenten in `pages/settings/tabs/`:
+    - `SettingsTabCompany.vue` — Studio-Identität, Steuer, Kontakt, Bank, Rechnungstexte
+    - `SettingsTabBooking.vue` — Vorgespräch, Anzahlung, Stundensätze, NR-Modell, Storno
+    - `SettingsTabClauses.vue` — Zahlungsarten, NR-Referenztabellen, Archivierung, Paragraphen, Sondervereinbarungen
+    - `SettingsTabNumbers.vue` — Nummernkreise (Dokumente, Stammdaten, Abgeleitet)
+    - `SettingsTabCalendar.vue` — Wiedervorlage, Feiertage, Schulferien, Cache
+    - `SettingsTabEmail.vue` — SMTP-Konfiguration, Test-Mail
+    - `SettingsTabAppearance.vue` — Theme, Sprache, Währung
+    - `SettingsTabAgb.vue` — AGB-Paragraphen-Editor
+    - `SettingsTabDsgvo.vue` — DSGVO-Abschnitte-Editor
+    - `SettingsTabAdv.vue` — ADV-Vertrag-Editor
+    - `SettingsTabBackup.vue` — Backup erstellen/wiederherstellen/importieren
+    - `SettingsTabUpdate.vue` — Update-ZIP-Installation mit Manifest-Vorschau
+    - `SettingsTabSystem.vue` — Datenpfad, App-Info, System-Reset
+  * `stores/useSettingsFormStore.js` — Pinia Store für shared Form-State, Paragraphen-CRUD, Logo-Upload, Save-Logik
+* Shared CSS in `SettingsPage.vue` (unscoped) — alle Tabs nutzen dieselben Klassen
+* Kein Logic-Refactoring — 1:1 Code-Migration aus der Monolith-Datei
+* Router-Import aktualisiert: `Settings` → `pages/settings/SettingsPage.vue`
+* Alte `Settings.vue` als `.bak` gesichert
+
 ## v1.2.0-dev — PDF-Workspace, Pipeline-Buttons, Zahlungserfassung, Projektnummern
 
 *02.–05. April 2026*

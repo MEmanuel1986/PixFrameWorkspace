@@ -908,9 +908,13 @@
 </template>
 
 <script>
-import { ref, reactive, computed, watch, onMounted, nextTick } from 'vue'
-import { useStore }              from '../stores/useStore'
-import { downloadPdfFromBackend } from '../services/pdfExport.js'
+import { ref, computed, watch, onMounted, nextTick } from 'vue'
+// ── Composables ───────────────────────────────────────────────────────────────
+import {
+  useProjectLoader, useProjectHelpers, useProjectPhoto, useProjectNotes,
+  useProjectDocuments, useProjectEdit, useProjectContract, useProjectQuotes,
+  useProjectInvoices, useProjectAnfrage, useProjectPipeline,
+} from './project/composables'
 // ── Pipeline Sub-Komponenten ──────────────────────────────────────────────────
 import ProjectPipelineAnfrage     from '../components/project/ProjectPipelineAnfrage.vue'
 import ProjectPipelineVorgespraech from '../components/project/ProjectPipelineVorgespraech.vue'
@@ -919,17 +923,10 @@ import ProjectPipelineVertrag     from '../components/project/ProjectPipelineVer
 import ProjectPipelineAnzahlung   from '../components/project/ProjectPipelineAnzahlung.vue'
 import ProjectPipelineAbrechnung  from '../components/project/ProjectPipelineAbrechnung.vue'
 import ProjectPipelineAbschluss   from '../components/project/ProjectPipelineAbschluss.vue'
-import { useProjectDetailStore } from '../stores/useProjectDetailStore'
-import { useContractStore }      from '../stores/useContractStore'
-import { useInvoiceStore }       from '../stores/useInvoiceStore'
-import { useQuoteStore }         from '../stores/useQuoteStore'
 import QuoteInvoiceModal from '../components/QuoteInvoiceModal.vue'
 import InlineQuoteForm  from '../components/InlineQuoteForm.vue'
 import NewProjectForm   from '../components/NewProjectForm.vue'
 import DocumentDetailModal from '../components/DocumentDetailModal.vue'
-import { useRoute, useRouter } from 'vue-router'
-import { generateZugferdXml, downloadZugferdXml } from '../services/zugferd.js'
-import apiClient, { API_BASE } from '../services/api'
 
 export default {
   name: 'ProjectDetail',
@@ -940,13 +937,20 @@ export default {
     ProjectPipelineAbschluss,
   },
   setup() {
-    const store         = useStore()
-    const pdStore       = useProjectDetailStore()
-    const contractStore = useContractStore()
-    const invoiceStore  = useInvoiceStore()
-    const quoteStore    = useQuoteStore()
+    // ══════════════════════════════════════════════════════════════════════════
+    // 1. LOADER — Stores, project, customer, settings
+    // ══════════════════════════════════════════════════════════════════════════
+    const loader = useProjectLoader()
+    const {
+      store, pdStore, contractStore, invoiceStore, quoteStore,
+      route, router, loading, settingsData, project, customer, customerName,
+      goBack, openProjectFolder, loadSettings,
+      calcAutoDeposit, calcAutoSurcharge, contractBase,
+      isSmallBusiness, activeArticles, enabledPaymentMethods,
+      categories, statusOptions, API_BASE,
+    } = loader
 
-    // ── Template-Aliases → Store-Refs (für ProjectDetail eigenes Template) ──
+    // Template-Aliases → Store-Refs
     const invoiceModal       = computed(() => invoiceStore.invoiceModal ?? false)
     const quoteStatusConfirm = computed(() => quoteStore.quoteStatusConfirm)
     const depositNextInvoice = computed(() => invoiceStore.depositNextInvoice)
@@ -957,1910 +961,196 @@ export default {
     const paymentSaving      = computed(() => invoiceStore.paymentSaving)
     const paymentError       = computed(() => invoiceStore.paymentError)
 
-    const activeArticles = computed(() => store.articles.filter(a => a.active !== false))
-    const route  = useRoute()
-    const router = useRouter()
+    // ══════════════════════════════════════════════════════════════════════════
+    // 2. HELPERS — Format-Funktionen
+    // ══════════════════════════════════════════════════════════════════════════
+    const helpers = useProjectHelpers(project)
+    const {
+      formatDate, formatCurrency, formatDateTime, formatTime, formatChangelogVal,
+      isExpired, typeLabel, fmtFileSize, fmtDate,
+      anyService, hasGettingReady,
+    } = helpers
 
-    const loading          = ref(true)
-    const projectDocuments = ref([])
-    const detailDocId      = ref(null)
+    // ══════════════════════════════════════════════════════════════════════════
+    // 3. PHOTO — Kundenfoto
+    // ══════════════════════════════════════════════════════════════════════════
+    const photo = useProjectPhoto(project, store)
+    const { photoLightbox, photoUploading, photoError, onPhotoSelect, onPhotoDrop, removeCustomerPhoto } = photo
 
-    // ── Kundenfoto ────────────────────────────────────────────────────────────
-    const photoLightbox  = ref(false)
-    const photoUploading = ref(false)
-    const photoError     = ref('')
+    // ══════════════════════════════════════════════════════════════════════════
+    // 4. NOTES — Projektnotizen
+    // ══════════════════════════════════════════════════════════════════════════
+    const notes = useProjectNotes(project, store)
+    const {
+      projectNotes, notesModal, noteSaving, noteEditing, noteEditText, noteCompose,
+      projectNotesSorted, openNoteCompose, saveNewNote, startEditNote, saveEditNote, deleteNote,
+    } = notes
 
-    async function uploadPhoto(file) {
-      if (!file || !project.value) return
-      photoError.value     = ''
-      photoUploading.value = true
-      try {
-        await store.uploadCustomerPhoto(project.value.id, file)
-      } catch(e) {
-        photoError.value = e.response?.data?.error || e.message
-      } finally {
-        photoUploading.value = false
-      }
-    }
-    function onPhotoSelect(e) { uploadPhoto(e.target.files[0]) }
-    function onPhotoDrop(e)   { uploadPhoto(e.dataTransfer.files[0]) }
-    async function removeCustomerPhoto() {
-      if (!project.value) return
-      await store.deleteCustomerPhoto(project.value.id)
-    }
+    // ══════════════════════════════════════════════════════════════════════════
+    // 5. EDIT — Inline-Edit, Sidebar-Edit, Hero-Live, Changelog
+    // ══════════════════════════════════════════════════════════════════════════
+    const edit = useProjectEdit(project, store, contractStore, settingsData)
+    const {
+      editing, editModal, editSaving, editError, editForm,
+      startInlineEdit, cancelInlineEdit, saveInlineEdit, openEditModal, saveEdit,
+      heroLive, onHeroLive,
+      auftragChangelog, showChangelogModal, auftragChangelogSorted, changelogGrouped,
+      sidebarEdit, openSidebarEdit, saveSidebarEdit,
+    } = edit
 
-    const project = computed(() =>
-      store.projects.find(p => p.id === route.params.id) || null
-    )
+    // ══════════════════════════════════════════════════════════════════════════
+    // 6. CONTRACT — Vertrag, Nachträge, Signierung
+    // ══════════════════════════════════════════════════════════════════════════
+    // Placeholder-Refs für zirkuläre Abhängigkeiten (contract ↔ docs)
+    const _projectDocuments = ref([])
+    const _openPdfInViewer = ref(async () => {})
 
-    const customerName = computed(() => {
-      if (!project.value?.customerId) return ''
-      const c = store.customers.find(c => c.id === project.value.customerId)
-      if (!c) return ''
-      return `${c.firstName || ''} ${c.lastName || ''}`.trim() || c.company || ''
+    const contract = useProjectContract(project, customer, store, contractStore, settingsData, {
+      projectDocuments: _projectDocuments,
+      openPdfInViewer: (...args) => _openPdfInViewer.value(...args),
+      refreshDocs: () => docs.refreshDocs(),
     })
+    const {
+      contractLocked, contractStatusClass, contractHasData,
+      openContractForm, saveContractData, saveContractStatus,
+      saveAddendum, deleteAddendum, setAddendumStatus,
+      uploadSignedContract, deleteSignedContract,
+      uploadSignedAddendum, deleteSignedAddendum,
+      openContractPrint, printContract, downloadContract,
+      openAdvPrint, openAddendumPrint, printAddendum, downloadAddendum,
+    } = contract
 
-    // Back-Navigation: immer zurück zum Dashboard
-    function goBack() {
-      router.push('/')
-    }
-
-    /**
-     * Öffnet den Projektordner (oder Unterordner) im Explorer/Finder.
-     * @param {string} [subfolder] - z.B. 'dokumente', 'medien/bilder', 'vertraege'
-     */
-    function openProjectFolder(subfolder) {
-      if (!window.pixframe?.openFolder || !project.value?.projectFolderPath) return
-      fetch(`${API_BASE}/api/workspace/info`)
-        .then(r => r.json())
-        .then(json => {
-          const wsPath = json.data?.path
-          if (!wsPath) return
-          let fullPath = wsPath + '/' + project.value.projectFolderPath
-          if (subfolder) fullPath += '/' + subfolder
-          window.pixframe.openFolder(fullPath.replace(/\//g, '\\'))
-        })
-        .catch(e => console.warn('Ordner öffnen fehlgeschlagen:', e))
-    }
-
-    // Live-Vorschau im Hero-Banner während Anfrage-Formular ausgefüllt wird
-    const heroLive = ref({ projectName: '', booking: '', bookingTime: '', location: '' })
-    function onHeroLive(data) { Object.assign(heroLive.value, data) }
-
-    // Leistungen-Checks
-    const anyService = computed(() =>
-      project.value && (
-        project.value.fotografie || project.value.videografie ||
-        project.value.glueckwunschkarten || project.value.gettingReady ||
-        project.value.gettingReadyEr || project.value.gettingReadySie ||
-        project.value.gettingReadyBeide
-      )
+    // ══════════════════════════════════════════════════════════════════════════
+    // 7. DOCUMENTS — Dokumentenliste, Print, ZUGFeRD
+    // ══════════════════════════════════════════════════════════════════════════
+    const docs = useProjectDocuments(
+      project, customer, store, pdStore, contractStore, invoiceStore, quoteStore, router, route,
+      { contractLocked, isStdDoc: null, stdDocPrintUrl: null, openContractPrint, openAddendumPrint },
     )
-    const hasGettingReady = computed(() =>
-      project.value && (
-        project.value.gettingReady || project.value.gettingReadyEr ||
-        project.value.gettingReadySie || project.value.gettingReadyBeide
-      )
-    )
+    const {
+      projectDocuments, docsModal, detailDocId, detailDocObj, allProjectDocs,
+      refreshDocs, onDocCreated, autoUpdateProjectStatus,
+      openDocDetail, openPdfInViewer,
+      openDocOrStd, openDocPrint, openDocDownload, openPrintView,
+      downloadDoc, downloadZugferdFromDoc,
+      isStdDoc, stdDocPrintUrl,
+    } = docs
 
-    // Helpers
-    function formatDate(d) { return d ? new Date(d).toLocaleDateString('de-DE') : '—' }
-    function formatCurrency(n) {
-      return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(n || 0)
-    }
-    function isExpired(d) { return d && new Date(d) < new Date() }
-    function typeLabel(type) {
-      return { contract:'Vertrag', addendum:'Nachtrag', attachment:'Anhang', invoice:'Rechnung', quote:'Angebot', mood:'Moodboard', reference:'Referenz', other:'Dokument', dsgvo:'DSGVO', adv:'ADV', agb:'AGB' }[type] || type
-    }
+    // Zirkuläre Refs auflösen
+    watch(projectDocuments, v => { _projectDocuments.value = v }, { immediate: true, deep: true })
+    _openPdfInViewer.value = openPdfInViewer
 
-    // Gibt für Standarddokumente die passende Druckseite zurück
-    function stdDocPrintUrl(doc) {
-      const pid = project.value?.id
-      const n = (doc.name || '').toLowerCase()
-      // Reihenfolge wichtig: ADV vor DSGVO prüfen
-      if (n.includes('auftragsverarbeitungs') || n.includes('adv-auftrags')) return '/print/adv-vertrag'
-      if (n.includes('adv') && n.includes('vertrag')) return '/print/adv-vertrag'
-      if (n.includes('dsgvo') || n.includes('einwilligung'))                  return '/print/dsgvo'
-      if (n.includes('adv') && pid) return `/print/adv/${pid}`
-      if (n.includes('agb')) return '/print/agb'
-      return null
-    }
-    function isStdDoc(doc) {
-      if (doc.type !== 'other') return false
-      const n = (doc.name || '').toLowerCase()
-      return n.includes('dsgvo') || n.includes('einwilligung') ||
-             n.includes('adv') || n.includes('auftragsverarbeitungs') ||
-             n.includes('agb')
-    }
-    // Öffnet Settings-Druckseite für AGB/DSGVO/ADV, sonst normale Dokumentansicht
-    function openDocOrStd(doc) {
-      // window.open MUSS synchron im User-Interaction-Callstack aufgerufen werden
-      // BEVOR das Modal geschlossen wird — sonst blockiert der Browser den Popup
-      let url = null
-      if (isStdDoc(doc)) {
-        url = stdDocPrintUrl(doc)
-      } else if (doc.type === 'invoice' || doc.type === 'quote') {
-        url = router.resolve({ name: 'DocumentPrint', params: { id: doc.id } }).href
-      }
-      if (url) {
-        window.open(url, '_blank')
-        docsModal.value = false
-      } else {
-        docsModal.value = false
-        openPrintView(doc)
-      }
-    }
+    // ══════════════════════════════════════════════════════════════════════════
+    // 8. ANFRAGE — Formular, Snapshot, Vorgespräch
+    // ══════════════════════════════════════════════════════════════════════════
+    const _pipelineOpen = ref(route.query.new === '1' ? 'anfrage' : null)
 
-    // ── Dokument-Aktionen (unified) ──────────────────────────────────
-    // PDF direkt speichern via Electron IPC (kein neues Fenster)
-    function openDocPrint(doc, action = null) {
-      if (!action) {
-        // Vorschau: Fenster oeffnen
-        const url = router.resolve({
-          name: 'DocumentPrint',
-          params: { id: doc.id },
-        }).href
-        window.open(url, '_blank')
-        docsModal.value = false
-        return
-      }
-      // PDF erzeugen + im Viewer oeffnen (oder Fallback: direkt speichern)
-      if (window.pixframe?.generateAndOpenPDF) {
-        openPdfInViewer('/api/pdf/document/' + doc.id)
-      } else {
-        const filename = [doc.documentNumber, doc.customerName].filter(Boolean).join('_')
-        downloadPdfFromBackend(`/api/pdf/document/${doc.id}`, filename)
-          .catch(e => console.error('PDF-Fehler:', e))
-      }
-      docsModal.value = false
-    }
-
-    // Shorthand
-    function openDocDownload(doc) {
-      openDocPrint(doc, 'download')
-    }
-
-    // 📄 E-Rechnung ZUGFeRD direkt aus Store – kein neuer Tab nötig
-    async function downloadZugferdFromDoc(doc) {
-      try {
-        const [docRes, settingsRes] = await Promise.all([
-          apiClient.get(`/documents/${doc.id}`),
-          apiClient.get('/settings'),
-        ])
-        const fullDoc  = docRes.data?.data ?? docRes.data
-        const settings = settingsRes.data?.data ?? settingsRes.data
-        const custRes  = fullDoc.customerId ? await apiClient.get(`/customers/${fullDoc.customerId}`) : null
-        const customer = custRes?.data?.data ?? null
-        const xml = generateZugferdXml(fullDoc, customer, settings, project.value)
-        downloadZugferdXml(xml, fullDoc.documentNumber || doc.documentNumber)
-      } catch(e) { console.error('ZUGFeRD Fehler:', e) }
-    }
-
-    function downloadDoc(doc) {
-      if (doc.filePath) window.open(`${API_BASE}/${doc.filePath}`, '_blank')
-    }
-
-    // Unified: Lupe öffnet immer die PDF-/Druckansicht des jeweiligen Dokuments
-    function openPrintView(doc) {
-      if (doc._isContract) {
-        openContractPrint()
-      } else if (doc._isAddendum) {
-        openAddendumPrint(doc._addendumId)
-      } else {
-        openDocPrint(doc)
-      }
-    }
-
-    // Edit Modal
-    const editing         = ref(false)
-    const editModal       = ref(false)  // kept for backward compat
-    const editSaving = ref(false)
-    const editError  = ref('')
-    const editForm   = ref({})
-
-
-    // Computed: gesperrt wenn unterschrieben UND mindestens ein Upload vorhanden
-    // (computed already imported at top)
-    const contractLocked = computed(() =>
-      contractStore.contractStatus === 'Unterschrieben'
-    )
-    const contractStatusClass = computed(() => ({
-      'Entwurf':       'badge-neutral',
-      'Verschickt':    'badge-info',
-      'Unterschrieben':'badge-success',
-    }[contractStore.contractStatus] || 'badge-neutral'))
-
-    // Hat der Vertrag bereits gespeicherte Klauseldaten?
-    const contractHasData = computed(() => {
-      // Only true when user has explicitly saved a contract via saveContractData()
-      // (not just because Anfrage pre-filled contractData in the background)
-      return !!(project.value?.contractCreated)
+    const anfrage = useProjectAnfrage(project, store, contractStore, quoteStore, settingsData, {
+      projectNotes, pipelineOpen: _pipelineOpen,
+      requireConsultSetting: computed(() => settingsData.value?.bookingTerms?.requireConsultation === true),
     })
+    const {
+      anfrageFormData, anfrageFormSaving, anfrageLocked,
+      saveAnfrageForm, saveAnfrageSnapshot,
+      consultation, consultSaving, requireConsult, saveConsultation,
+    } = anfrage
 
-    function openContractForm() {
-      contractStore.contractFormIsNew = !contractStore.contractHasData
-      const p = project.value
-
-      if (!contractStore.contractHasData) {
-        // Neuer Vertrag: Leistungen aus Anfrage vorbelegen
-        if (p) {
-          contractStore.contractForm.fotografie         = p.fotografie         || false
-          contractStore.contractForm.videografie        = p.videografie        || false
-          contractStore.contractForm.glueckwunschkarten = p.glueckwunschkarten || false
-          contractStore.contractForm.gettingReadyEr     = p.gettingReadyEr     || false
-          contractStore.contractForm.gettingReadySie    = p.gettingReadySie    || false
-          contractStore.contractForm.gettingReadyBeide  = p.gettingReadyBeide  || false
-        }
-        // defaultActive Klauseln vorauswählen
-        const activeClauses = (settingsData.value?.contractClauses?.specialClauses || [])
-          .filter(cl => cl.defaultActive)
-          .map(cl => cl.id)
-        contractStore.contractForm.selectedSpecialClauses = activeClauses
-      } else {
-        // Vorhandener Vertrag: Leistungen aus contractData, Fallback auf project
-        const cd = p?.contractData || {}
-        contractStore.contractForm.fotografie         = cd.fotografie         != null ? cd.fotografie         : (p?.fotografie         || false)
-        contractStore.contractForm.videografie        = cd.videografie        != null ? cd.videografie        : (p?.videografie        || false)
-        contractStore.contractForm.glueckwunschkarten = cd.glueckwunschkarten != null ? cd.glueckwunschkarten : (p?.glueckwunschkarten || false)
-        contractStore.contractForm.gettingReadyEr     = cd.gettingReadyEr     != null ? cd.gettingReadyEr     : (p?.gettingReadyEr     || false)
-        contractStore.contractForm.gettingReadySie    = cd.gettingReadySie    != null ? cd.gettingReadySie    : (p?.gettingReadySie    || false)
-        contractStore.contractForm.gettingReadyBeide  = cd.gettingReadyBeide  != null ? cd.gettingReadyBeide  : (p?.gettingReadyBeide  || false)
-      }
-      contractStore.contractFormOpen = true
-    }
-
-    // ── Erweiterte Dokumentenliste: Docs + Vertrag + Nachträge ──
-    const allProjectDocs = computed(() => {
-      const docs = [...(projectDocuments.value || [])]
-      if (!project.value) return docs
-
-      // ── Hauptvertrag + Generierungs-Versionen ──
-      // Nur anzeigen wenn mindestens eine Version generiert wurde
-      const cgv = contractStore.contractGeneratedVersions || []
-      if (cgv.length > 0 || (contractStore.signedContracts || []).length > 0) {
-        const cs = contractStore.contractStatus || 'Entwurf'
-        const latestGen = cgv.length ? cgv[cgv.length - 1] : null
-        docs.push({
-          id: `__contract_${project.value.id}`,
-          _isContract: true,
-          _contractEditable: !contractLocked.value,  // bearbeitbar bis Unterschrift
-          _generatedVersions: cgv,
-          _latestGenerated: latestGen?.generatedAt || null,
-          name: `Vertrag · ${project.value.contractData?.occasion || project.value.projectName || 'Auftrag'}`,
-          type: 'contract',
-          status: cs,
-          issueDate: latestGen?.generatedAt || project.value.createdAt || null,
-          total: null,
-          documentNumber: project.value.contractNumber || null,
-        })
-      }
-
-      // ── Unterzeichnete Verträge als Anhänge (eingerückt unter Vertrag) ──
-      for (const sc of contractStore.signedContracts || []) {
-        docs.push({
-          id: `__signed_${sc.id}`,
-          _isAttachment: true,
-          _attachmentLabel: 'Unterschriebener Vertrag',
-          _downloadUrl: `${API_BASE}/api/projects/${project.value.id}/contracts/${sc.id}/download`,
-          name: sc.originalName,
-          type: 'attachment',
-          status: 'Unterschrieben',
-          issueDate: sc.uploadedAt,
-          total: null,
-          documentNumber: null,
-          ext: sc.ext,
-        })
-      }
-
-      // ── Nachträge als Anhänge (eingerückt unter Vertrag) ──
-      for (const [i, add] of (contractStore.contractAddenda || []).entries()) {
-        docs.push({
-          id: `__addendum_${add.id}`,
-          _isAddendum: true,
-          _addendumId: add.id,
-          name: add.title || `Nachtrag ${i + 1}`,
-          type: 'addendum',
-          status: add.signedFile ? 'Unterschrieben' : 'Entwurf',
-          issueDate: add.date,
-          total: null,
-          documentNumber: add.addendumNumber || null,
-        })
-        // Unterzeichneter Nachtrag als weiterer Anhang
-        if (add.signedFile) {
-          docs.push({
-            id: `__signed_add_${add.id}`,
-            _isAttachment: true,
-            _attachmentLabel: `Unterschr. ${add.title || `Nachtrag ${i + 1}`}`,
-            _downloadUrl: `${API_BASE}/api/projects/${project.value.id}/addenda/${add.id}/sign/download`,
-            name: add.signedFile.originalName,
-            type: 'attachment',
-            status: 'Unterschrieben',
-            issueDate: add.signedFile.uploadedAt,
-            total: null,
-            documentNumber: null,
-            ext: add.signedFile.ext,
-          })
-        }
-      }
-
-      return docs
+    // ══════════════════════════════════════════════════════════════════════════
+    // 9. QUOTES — Angebote
+    // ══════════════════════════════════════════════════════════════════════════
+    const quotes = useProjectQuotes(project, store, contractStore, quoteStore, settingsData, {
+      projectDocuments, refreshDocs, openPdfInViewer, saveAnfrageSnapshot,
+      pipelineOpen: _pipelineOpen,
     })
-
-    async function saveContractStatus() {
-      try {
-        await store.updateProject(project.value.id, { contractStatus: contractStore.contractStatus })
-      } catch (e) { console.error(e) }
-    }
-
-    async function saveAddendum() {
-      if (!contractStore.addendumDraft.title.trim() || !contractStore.addendumDraft.content.trim()) return
-      contractStore.addendumSaving = true
-      try {
-        let addendumNumber = null
-        try {
-          const nr = await apiClient.get('/projects/next-addendum-number')
-          addendumNumber = nr.data?.number || null
-        } catch {}
-
-        const newAdd = {
-          id:            `add_${Date.now()}_${Math.random().toString(36).slice(2,7)}`,
-          addendumNumber,
-          title:         contractStore.addendumDraft.title.trim(),
-          date:          contractStore.addendumDraft.date,
-          content:       contractStore.addendumDraft.content.trim(),
-          addStatus:     'Entwurf',
-          createdAt:     new Date().toISOString(),
-        }
-        const updated = [...contractStore.contractAddenda, newAdd]
-        await store.updateProject(project.value.id, { contractAddenda: updated })
-        contractStore.contractAddenda = updated
-        contractStore.addendumDraft   = { title: '', date: new Date().toISOString().slice(0,10), content: '', addStatus: 'Entwurf' }
-        contractStore.addendaFormOpen = false
-      } catch (e) { console.error(e) } finally { contractStore.addendumSaving = false }
-    }
-
-    async function deleteAddendum(addId) {
-      if (!confirm('Nachtrag wirklich löschen?')) return
-      const updated = contractStore.contractAddenda.filter(a => a.id !== addId)
-      await store.updateProject(project.value.id, { contractAddenda: updated })
-      contractStore.contractAddenda = updated
-    }
-
-    // ─── Einstellungen (für Auto-Deposit + Template-Info) ────────
-    const settingsData      = ref(null)
-
-    async function loadSettings() {
-      try {
-        const res = await apiClient.get('/settings')
-        settingsData.value     = res.data?.data || res.data
-        contractStore.contractTemplate = settingsData.value?.contractTemplate || null
-      } catch (e) { console.error('Settings laden fehlgeschlagen:', e) }
-    }
-
-    // Auto-Deposit: berechnet aus Budget × Anzahlungssatz (nur wenn noch kein Wert gesetzt)
-    // Auto-suggest usage surcharge from settings matrix
-    function calcAutoSurcharge(scope, duration) {
-      const matrix = settingsData.value?.usageSurchargeMatrix
-      if (!matrix || !scope || !duration) return 0
-      return matrix[scope]?.[duration] ?? 0
-    }
-
-    function calcAutoDeposit(base) {
-      const rate = settingsData.value?.bookingTerms?.depositRate ?? 20
-      if (!rate || !base) return null
-      return Math.round(base * rate / 100 * 100) / 100
-    }
-
-    // Base amount derived from pricing model – used for auto-deposit calculation
-    const contractBase = computed(() => {
-      const f = contractStore.contractForm
-      if (f.pricingModel === 'hourly' && f.hourlyRate && f.estimatedHours)
-        return f.hourlyRate * f.estimatedHours
-      if (f.pricingModel === 'flat' && f.flatRate)
-        return f.flatRate
-      return null
-    })
-
-    function fmtFileSize(bytes) {
-      if (!bytes) return ''
-      if (bytes < 1024) return `${bytes} B`
-      if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-      return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-    }
-    function fmtDate(iso) {
-      if (!iso) return ''
-      return new Date(iso).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
-    }
-
-    function openContractPrint(autoAction = false) {
-      if (!project.value) return
-      if (!autoAction) {
-        // Vorschau: Fenster oeffnen
-        window.open(`/print/contract/${project.value.id}`, '_blank')
-        return
-      }
-      // PDF erzeugen + im Viewer oeffnen
-      if (window.pixframe?.generateAndOpenPDF) {
-        openPdfInViewer('/api/pdf/contract/' + project.value.id)
-      } else {
-        const p = project.value
-        const cu = customer.value
-        const filename = [p?.contractNumber || 'Vertrag', p?.category, cu?.lastName || cu?.company || ''].filter(Boolean).join('_')
-        downloadPdfFromBackend(`/api/pdf/contract/${project.value.id}`, filename)
-          .catch(e => console.error('PDF-Fehler:', e))
-      }
-    }
-
-    // ── Vertrag oeffnen: Status → Verschickt, dann PDF im Viewer oeffnen ──
-    async function printContract() {
-      if (contractStore.contractStatus === 'Entwurf') {
-        contractStore.contractStatus = 'Verschickt'
-        await saveContractStatus()
-      }
-      openContractPrint('download')
-    }
-
-    // ── Vertrag oeffnen (Alias) ──
-    async function downloadContract() {
-      if (contractStore.contractStatus === 'Entwurf') {
-        contractStore.contractStatus = 'Verschickt'
-        await saveContractStatus()
-      }
-      openContractPrint('download')
-    }
-
-    function openAdvPrint() {
-      if (!project.value) return
-      if (window.pixframe?.generateAndOpenPDF) {
-        openPdfInViewer('/api/pdf/adv/' + project.value.id)
-      } else {
-        const cu = customer.value
-        const filename = 'ADV_' + (cu?.lastName || cu?.company || project.value.id)
-        downloadPdfFromBackend(`/api/pdf/adv/${project.value.id}`, filename)
-          .catch(e => console.error('PDF-Fehler:', e))
-      }
-    }
-
-    function openAddendumPrint(addendumId, autoAction = false) {
-      if (!project.value) return
-      if (!autoAction) {
-        window.open(`/print/addendum/${project.value.id}/${addendumId}`, '_blank')
-        return
-      }
-      if (window.pixframe?.generateAndOpenPDF) {
-        openPdfInViewer('/api/pdf/addendum/' + project.value.id + '/' + addendumId)
-      } else {
-        const filename = 'Nachtrag_' + (project.value.contractNumber || project.value.id)
-        downloadPdfFromBackend(`/api/pdf/addendum/${project.value.id}/${addendumId}`, filename)
-          .catch(e => console.error('PDF-Fehler:', e))
-      }
-    }
-
-    // ── Nachtrag oeffnen: Status → Verschickt, dann PDF im Viewer ──
-    async function printAddendum(add) {
-      if ((add.addStatus || 'Entwurf') === 'Entwurf') {
-        await setAddendumStatus(add, 'Verschickt')
-      }
-      openAddendumPrint(add.id, 'download')
-    }
-
-    // ── Nachtrag oeffnen (Alias) ──
-    async function downloadAddendum(add) {
-      if ((add.addStatus || 'Entwurf') === 'Entwurf') {
-        await setAddendumStatus(add, 'Verschickt')
-      }
-      openAddendumPrint(add.id, 'download')
-    }
-
-    // ── Nachtragsstatus setzen ────────────────────────────────────────────────
-    async function setAddendumStatus(add, newStatus) {
-      const idx = contractStore.contractAddenda.findIndex(a => a.id === add.id)
-      if (idx === -1) return
-      contractStore.contractAddenda[idx] = { ...contractStore.contractAddenda[idx], addStatus: newStatus }
-      await store.updateProject(project.value.id, { contractAddenda: contractStore.contractAddenda })
-    }
-
-    async function uploadSignedAddendum(e, addendumId) {
-      const file = e.target.files?.[0]
-      if (!file) return
-      try {
-        const fd = new FormData()
-        fd.append('addendum', file)
-        const res = await fetch(`${API_BASE}/api/projects/${project.value.id}/addenda/${addendumId}/sign`, {
-          method: 'POST', body: fd
-        })
-        const j = await res.json()
-        if (!res.ok) throw new Error(j.error || 'Upload fehlgeschlagen')
-        // Update local addendum: set signedFile + auto-status Unterschrieben
-        const idx = contractStore.contractAddenda.findIndex(a => a.id === addendumId)
-        if (idx !== -1) {
-          contractStore.contractAddenda[idx] = {
-            ...contractStore.contractAddenda[idx],
-            signedFile: j.data,
-            addStatus: 'Unterschrieben',
-          }
-          await store.updateProject(project.value.id, { contractAddenda: contractStore.contractAddenda })
-        }
-      } catch (err) { console.error('Nachtrag-Upload Fehler:', err) }
-      finally { e.target.value = '' }
-    }
-
-    async function deleteSignedAddendum(addendumId) {
-      if (!confirm('Unterzeichneten Nachtrag wirklich löschen?')) return
-      try {
-        await fetch(`${API_BASE}/api/projects/${project.value.id}/addenda/${addendumId}/sign`, { method: 'DELETE' })
-        const idx = contractStore.contractAddenda.findIndex(a => a.id === addendumId)
-        if (idx !== -1) contractStore.contractAddenda[idx] = { ...contractStore.contractAddenda[idx], signedFile: null }
-      } catch (err) { console.error(err) }
-    }
-
-    async function saveContractData() {
-      contractStore.contractSaving = true; contractStore.contractSaved = false
-      try {
-        // Assign contract number on first save
-        let contractNumber = project.value.contractNumber
-        if (!contractNumber) {
-          const nr = await apiClient.get('/projects/next-contract-number')
-          contractNumber = nr.data?.number || null
-        }
-        await store.updateProject(project.value.id, {
-          contractData: { ...contractStore.contractForm },
-          contractCreated: true,
-          ...(contractNumber && !project.value.contractNumber ? { contractNumber } : {}),
-        })
-        if (contractNumber) project.value.contractNumber = contractNumber
-        // Version-Eintrag anlegen (wie Angebots-Versionen)
-        const existingVersions = contractStore.contractGeneratedVersions || []
-        const newVersion = {
-          id: `cv_${Date.now()}`,
-          savedAt: new Date().toISOString(),
-          generatedAt: new Date().toISOString(),
-          label: 'v' + (existingVersions.length + 1),
-        }
-        contractStore.contractGeneratedVersions = [...existingVersions, newVersion]
-        await store.updateProject(project.value.id, {
-          contractGeneratedVersions: contractStore.contractGeneratedVersions,
-        })
-        contractStore.contractSaved = true
-        setTimeout(() => { contractStore.contractSaved = false }, 2500)
-        // Bei neuer Version (nicht erste): Status zurück auf Entwurf
-        if (existingVersions.length > 0) {
-          contractStore.contractStatus = 'Entwurf'
-          await store.updateProject(project.value.id, { contractStatus: 'Entwurf' })
-        }
-
-        // Beim erstmaligen Erstellen: AGB, DSGVO und ADV automatisch als Dokumente anlegen
-        if (existingVersions.length === 0) {
-          const today = new Date().toISOString().slice(0, 10)
-          const stdDocs = [
-            { name: 'AGB',                     icon: '§'  },
-            { name: 'DSGVO-Einwilligungserklärung', icon: '🔒' },
-            { name: 'ADV-Auftragsverarbeitungsvertrag', icon: '📋' },
-          ]
-          for (const d of stdDocs) {
-            try {
-              await store.addDocument({
-                projectId:  project.value.id,
-                customerId: project.value.customerId,
-                type:       'other',
-                name:       d.name,
-                status:     'Aktiv',
-                issueDate:  today,
-              })
-            } catch (e) {
-              console.warn(`Vertragsdokument "${d.name}" konnte nicht angelegt werden:`, e)
-            }
-          }
-          // Dokumentliste neu laden damit die Docs sofort erscheinen
-          try {
-            const docs = await store.fetchDocumentsByProject(project.value.id)
-            projectDocuments.value = docs || []
-          } catch (e) { console.warn('Docs reload failed:', e) }
-
-          // AGB, DSGVO und ADV-PDFs automatisch im Projektordner ablegen (fire-and-forget)
-          if (window.pixframe?.generatePDF) {
-            const pid = project.value.id
-            window.pixframe.generatePDF(`/api/pdf/agb?projectId=${pid}`).catch(() => {})
-            window.pixframe.generatePDF(`/api/pdf/dsgvo?projectId=${pid}`).catch(() => {})
-            window.pixframe.generatePDF(`/api/pdf/adv/${pid}`).catch(() => {})
-            console.log('[PDF] AGB/DSGVO/ADV werden im Projektordner abgelegt')
-          }
-        }
-
-        // Zurück zur Übersicht (wie bei Angebot nach "Angebot erstellen")
-        contractStore.contractFormOpen = false
-
-      } catch (e) { console.error(e) } finally { contractStore.contractSaving = false }
-    }
-
-    function confirmDepositNo() {
-      invoiceStore.depositNoAgreement = true
-      store.updateProject(project.value.id, { depositNoAgreement: true })
-    }
-
-    function resetDepositNoAgreement() {
-      invoiceStore.depositNoAgreement = false
-      store.updateProject(project.value.id, { depositNoAgreement: false })
-    }
-
-    async function onCorrectionCreated(doc) {
-      onDocCreated(doc)
-      await refreshDocs()
-    }
-
-    async function changeRelatedDocStatus(doc, newStatus) {
-      if (!newStatus || newStatus === doc.status) return
-      if (newStatus === 'Bezahlt') {
-        // Korrekturrechnung bezahlt → öffne Payment-Popup
-        openPaymentPopup(doc.id, doc.documentNumber || 'Korrekturrechnung')
-        return
-      }
-      try {
-        await store.setDocumentStatus(doc.id, newStatus)
-        await refreshDocs()
-      } catch (e) { console.error(e) }
-    }
-
-    async function cancelInvoice(invoiceId, reason = '') {
-      try {
-        await store.cancelInvoice(invoiceId, reason)
-        await refreshDocs()
-      } catch (e) { console.error('Storno fehlgeschlagen:', e) }
-    }
-
-    async function createCorrection(invoiceId, data = {}) {
-      try {
-        await store.correctInvoice(invoiceId, data)
-        await refreshDocs()
-      } catch (e) { console.error('Korrektur fehlgeschlagen:', e) }
-    }
-
-    async function uploadSignedContract(e) {
-      const file = e.target.files?.[0]; if (!file) return
-      contractStore.signedError = ''; contractStore.signedUploading = true
-      try {
-        const fd = new FormData(); fd.append('contract', file)
-        const res = await fetch(`${API_BASE}/api/projects/${project.value.id}/contracts`, { method: 'POST', body: fd })
-        const j = await res.json()
-        if (!res.ok) throw new Error(j.error || 'Upload fehlgeschlagen')
-        contractStore.signedContracts.push(j.data)
-        // Automatisch Status auf "Unterschrieben" setzen
-        if (contractStore.contractStatus !== 'Unterschrieben') {
-          contractStore.contractStatus = 'Unterschrieben'
-          await store.updateProject(project.value.id, { contractStatus: 'Unterschrieben' })
-        }
-
-      } catch (err) { contractStore.signedError = err.message }
-      finally { contractStore.signedUploading = false; e.target.value = '' }
-    }
-
-    async function deleteSignedContract(cid) {
-      if (!confirm('Vertrag wirklich löschen?')) return
-      try {
-        await fetch(`${API_BASE}/api/projects/${project.value.id}/contracts/${cid}`, { method: 'DELETE' })
-        contractStore.signedContracts = contractStore.signedContracts.filter(c => c.id !== cid)
-      } catch (e) { contractStore.signedError = e.message }
-    }
-
-    const categories    = ['Hochzeit','Portrait','Event','Produktfotografie','Familienshooting','Businessfotografie','Sonstiges']
-    const statusOptions = ['Anfrage','Aktiv','Entwurf','Abgeliefert','Abgeschlossen','Storniert']
-
-    function startInlineEdit() {
-      editing.value = true
-      setTimeout(() => {
-        const el = document.querySelector('.npf')
-        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      }, 80)
-    }
-
-    function cancelInlineEdit() {
-      editing.value = false
-      editError.value = ''
-    }
-
-    async function saveInlineEdit(payload) {
-      // payload can be { project, contractData } from NewProjectForm, or bare object from old path
-      editSaving.value = true
-      try {
-        const pData = payload?.project || payload
-        await store.updateProject(project.value.id, pData)
-        if (payload?.contractData) {
-          await store.updateProject(project.value.id, {
-            contractData: payload.contractData,
-          })
-          Object.assign(contractStore.contractForm, payload.contractData)
-        }
-        editing.value = false
-      } catch (e) {
-        console.error('Speichern fehlgeschlagen:', e)
-      } finally { editSaving.value = false }
-    }
-
-    function openEditModal() {
-      editForm.value = {
-        ...project.value,
-        booking:         (project.value.booking      || '').slice(0, 10),
-        deliveryDate:    (project.value.deliveryDate  || '').slice(0, 10),
-        bookingDuration: project.value.bookingDuration || '',
-        budget:          { ...(project.value.budget || { estimatedAmount: 0, currency: 'EUR' }) },
-      }
-      editError.value = ''
-      editModal.value = true
-    }
-
-    async function saveEdit() {
-      editError.value = ''
-      if (!editForm.value.projectName?.trim()) { editError.value = 'Auftragsname ist erforderlich.'; return }
-      editSaving.value = true
-      try {
-        await store.updateProject(project.value.id, editForm.value)
-        editModal.value = false
-      } catch (e) {
-        editError.value = 'Fehler: ' + (e.response?.data?.error || e.message)
-      } finally { editSaving.value = false }
-    }
-
-    const customer = computed(() =>
-      store.customers.find(c => c.id === project.value?.customerId) || null
-    )
-
-    function onDocCreated(doc) {
-      projectDocuments.value.unshift(doc)
-      // Refresh full list to pick up status changes on quote
-      store.fetchDocuments()
-      // Auto-advance project status based on new document
-      autoUpdateProjectStatus()
-    }
-
-    /**
-     * Advances project.status along the defined workflow — never downgrades, never touches 'Storniert'.
-     *
-     * Workflow:                Status nach Trigger:
-     *   Anzahlungsrechnung bezahlt  → Aktiv
-     *   Schlussrechnung erstellt    → Abgeliefert
-     *   Schlussrechnung bezahlt     → Abgeschlossen
-     */
-    async function autoUpdateProjectStatus() {
-      const p = project.value
-      if (!p || p.status === 'Storniert') return
-      const order    = ['Anfrage', 'Aktiv', 'Abgeliefert', 'Abgeschlossen']
-      const currIdx  = order.indexOf(p.status)
-
-      const docs       = projectDocuments.value
-      const invoices   = docs.filter(d => d.type === 'invoice' && !d.docSubtype && !d.correctionOf)
-      const depInv     = invoices.filter(d => d.isDeposit)
-      const finalInv   = invoices.filter(d => !d.isDeposit)
-
-      const depositPaid = depInv.some(d => d.status === 'Bezahlt')
-      const hasFinal    = finalInv.length > 0
-      const finalPaid   = finalInv.some(d => d.status === 'Bezahlt')
-
-      let target = null
-      if (finalPaid)    target = 'Abgeschlossen'
-      else if (hasFinal)     target = 'Abgeliefert'
-      else if (depositPaid)  target = 'Aktiv'
-
-      if (!target) return
-      const targetIdx = order.indexOf(target)
-      if (targetIdx <= currIdx) return   // never downgrade
-
-      try {
-        await store.updateProject(p.id, { status: target })
-      } catch(e) { console.error('Status-Update fehlgeschlagen:', e) }
-    }
-
-    const detailDocObj = computed(() =>
-      detailDocId.value ? store.documents.find(d => d.id === detailDocId.value) || null : null
-    )
-    async function openDocDetail(doc) {
-      // Ensure store.documents is populated BEFORE setting the ID
-      // so the computed detailDocObj resolves immediately
-      await store.fetchDocuments()
-      detailDocId.value = typeof doc === 'string' ? doc : doc.id
-    }
-
-    async function refreshDocs() {
-      await store.fetchDocuments()
-      try {
-        const docs = await store.fetchDocumentsByProject(route.params.id)
-        if (docs) {
-          projectDocuments.value = docs
-          // Stores aktuell halten
-          pdStore.projectDocuments = docs
-          invoiceStore.loadFromDocs(docs)
-          quoteStore.loadFromDocs(docs)
-        }
-      } catch (e) { console.error(e) }
-      // Auto-advance status after any document change (e.g. invoice marked as paid)
-      autoUpdateProjectStatus()
-    }
-
-    // ── Anfrage-Panel: unified form ───────────────────────────────────────────
-    const anfrageFormSaving = ref(false)
-
-    const anfrageFormData = computed(() => {
-      if (!project.value) return null
-      // If locked: show the frozen snapshot so Anfrage data never changes
-      const snap = project.value.anfrageSnapshot
-      if (snap) {
-        return {
-          ...project.value,   // keep id, customerId etc.
-          ...snap,            // overwrite with snapshot fields
-          contractData: snap.contractData || {},
-        }
-      }
-      return {
-        ...project.value,
-        contractData: { ...contractStore.contractForm },
-      }
-    })
-
-
-    // ══════════════════════════════════════════
-    // WORKFLOW PIPELINE
-    // ══════════════════════════════════════════
-    const pipelineOpen = ref(route.query.new === '1' ? 'anfrage' : null)  // auto-set in onMounted
-
-    // heroLive zurücksetzen wenn Anfrage-Formular geschlossen wird
-    watch(pipelineOpen, (v) => {
-      if (!v || v !== 'anfrage') heroLive.value = { projectName: '', booking: '', bookingTime: '', location: '' }
-    })
-
-    // ── Vorgespräch state ────────────────────────────────────────────────
-    const consultation = ref({
-      date:           '',
-      notes:          '',
-      clientAccepted: null,   // null=noch offen, true=angenommen, false=abgelehnt
-    })
-    const consultSaving  = ref(false)
-    const requireConsult = computed(() => settingsData.value?.bookingTerms?.requireConsultation === true)
-
-    async function saveConsultation() {
-      consultSaving.value = true
-      try {
-        await store.updateProject(project.value.id, { consultation: consultation.value })
-        // Save Vorgespräch notes to projectNotes with timestamp
-        const noteText = consultation.value.notes?.trim()
-        if (noteText) {
-          const existing = projectNotes.value.find(n => n.source === 'vorgespräch')
-          const note = {
-            id:        existing?.id || `pn_vg_${Date.now()}`,
-            text:      noteText,
-            source:    'vorgespräch',
-            label:     `💬 Vorgespräch${consultation.value.date ? ' · ' + new Date(consultation.value.date).toLocaleDateString('de-DE') : ''}`,
-            createdAt: existing?.createdAt || new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          }
-          const updatedNotes = [
-            ...projectNotes.value.filter(n => n.source !== 'vorgespräch'),
-            note,
-          ]
-          projectNotes.value = updatedNotes
-          await store.updateProject(project.value.id, { projectNotes: updatedNotes })
-        }
-        await store.fetchProjects()
-      } catch(e) { console.error(e) }
-      finally { consultSaving.value = false }
-    }
-
-    function openDepositInvoice() {
-      const depAmount    = contractStore.contractForm.depositAmount
-      const projectLabel = project.value?.projectName || project.value?.contractData?.occasion || ''
-      const taxR         = isSmallBusiness.value ? 0 : 19
-
-      const prefillLine = {
-        description: 'Anzahlung',
-        detail:      projectLabel ? ('Gemäß Vertrag – ' + projectLabel) : 'Gemäß Vertrag',
-        quantity:    1,
-        unit:        'Pauschal',
-        priceNet:    (depAmount && depAmount > 0) ? depAmount : 0,
-        taxRate:     taxR,
-        discount:    0,
-      }
-      invoiceStore.invoicePrefillItems = [prefillLine]
-      invoiceStore.depositFormOpen = true
-    }
-
-    // Billing state for step 5
-    // ── Abrechnung: Positionsliste (wie Angebot) ─────────────────────────────
-    let abrKeyCounter = 0
-    function mkAbrLine(d = {}) {
-      const taxR = isSmallBusiness.value ? 0 : (d.taxRate ?? 19)
-      return {
-        _key:        ++abrKeyCounter,
-        description: d.description || '',
-        detail:      d.detail      || '',
-        quantity:    d.quantity    ?? 1,
-        unit:        d.unit        || 'Pauschal',
-        priceNet:    d.priceNet    ?? 0,
-        taxRate:     taxR,
-        discount:    d.discount    ?? 0,
-      }
-    }
-
-    const abrechnungItems = ref([])
-    const abrQuickAddId   = ref('')
-
-    // Anfahrt-Schnelleingabe
-    const abrechnungKm = ref({ total: 0, free: 0, rate: 0.30 })
-
-    // isSmallBusiness: true wenn §19 UStG in Einstellungen aktiviert
-    const isSmallBusiness = computed(() => !!settingsData.value?.company?.smallBusiness)
-
-    // Enabled payment methods from settings (fallback to defaults if not configured)
-    const enabledPaymentMethods = computed(() => {
-      const methods = settingsData.value?.bookingTerms?.enabledPaymentMethods
-      const ALL = [
-        { id: 'Überweisung',      icon: '🏦' },
-        { id: 'Bar',              icon: '💵' },
-        { id: 'EC-Karte',         icon: '💳' },
-        { id: 'Kreditkarte',      icon: '💳' },
-        { id: 'PayPal',           icon: '🅿️' },
-        { id: 'SEPA-Lastschrift', icon: '📄' },
-        { id: 'Vorkasse',         icon: '💰' },
-      ]
-      if (!methods?.length) return ALL
-      return ALL.filter(m => methods.includes(m.id))
-    })
-
-    // Hat die Liste bereits eine Anzahlungs-Abzugszeile?
-    const abrechnungHasDeposit = computed(() =>
-      abrechnungItems.value.some(i => i._isDepositDeduction)
-    )
-
-    function abrLineNet(item) {
-      return (Number(item.quantity) || 0) * (Number(item.priceNet) || 0) * (1 - (Number(item.discount) || 0) / 100)
-    }
-
-    const abrSubtotal = computed(() =>
-      abrechnungItems.value.reduce((s, i) => s + abrLineNet(i), 0)
-    )
-
-    const abrTaxGroups = computed(() => {
-      if (isSmallBusiness.value) return []
-      const map = {}
-      for (const i of abrechnungItems.value) {
-        const net = abrLineNet(i)
-        const rate = Number(i.taxRate) || 0
-        if (!map[rate]) map[rate] = { rate, base: 0, amount: 0 }
-        map[rate].base += net
-        map[rate].amount += net * rate / 100
-      }
-      return Object.values(map).filter(g => g.rate > 0)
-    })
-
-    const abrechnungTotal = computed(() =>
-      abrSubtotal.value + abrTaxGroups.value.reduce((s, g) => s + g.amount, 0)
-    )
-
-    // Auto-Prefill aus Artikelkatalog
-    function abrAddFromCatalog() {
-      if (!abrQuickAddId.value) return
-      const a = store.articles.find(a => a.id === abrQuickAddId.value)
-      if (a) abrechnungItems.value.push(mkAbrLine({
-        description: a.name, detail: a.description || '',
-        quantity: 1, unit: a.unit || 'Pauschal',
-        priceNet: a.priceNet, taxRate: a.taxRate,
-      }))
-      abrQuickAddId.value = ''
-    }
-
-    function abrAddEmptyLine() {
-      abrechnungItems.value.push(mkAbrLine())
-    }
-
-    // Positionen aus Angebot übernehmen
-    function prefillFromQuoteDoc() {
-      if (!quoteDoc.value?.lineItems?.length) return
-      abrechnungItems.value = quoteDoc.value.lineItems.map(i => mkAbrLine({
-        ...i,
-        taxRate: isSmallBusiness.value ? 0 : (i.taxRate ?? 19),
-      }))
-    }
-
-    // Baut eine lesbare NR-Beschreibung aus den gespeicherten Vertragsdaten
+    const {
+      quoteDoc, allProjectQuotes, quotePrefillItems,
+      changeQuoteStatus, confirmQuoteStatusChange, markQuoteAccepted,
+      printQuote, downloadQuote,
+      openQuoteFromProject, openQuoteRevise, onInlineQuoteCreated,
+    } = quotes
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // 10. INVOICES — Rechnungen, Zahlungen, Abrechnung
+    // ══════════════════════════════════════════════════════════════════════════
+    // buildNRDescription — Hilfsfunktion für Nutzungsrechte-Beschreibung
     function buildNRDescription(cd) {
       if (!cd?.usageRights?.enabled) return 'Werbliche Nutzung gemäß Auftragsvereinbarung'
-
       const ur = cd.usageRights
       const mode = settingsData.value?.bookingTerms?.usageRightsMode || 'simple'
-
-      // ── Simple Mode ──────────────────────────────────────────────────────
       if (mode === 'simple' && cd.simpleNr) {
         const sn = cd.simpleNr
-        const CATEGORY_LABELS = {
-          print:  'Print / OOH (Anzeigen, Plakate, Außenwerbung)',
-          online: 'Online / Social Media (Website, Social-Kanäle, Newsletter)',
-          tv:     'TV / Video (Spots, Streaming, Kino)',
-          pr:     'PR / Redaktion (Presse, Jahresberichte)',
-        }
+        const CATEGORY_LABELS = { print: 'Print / OOH', online: 'Online / Social Media', tv: 'TV / Video', pr: 'PR / Redaktion' }
         const cats = (sn.categories || []).map(k => CATEGORY_LABELS[k] || k)
         const parts = []
         if (cats.length) parts.push(`Nutzungsarten: ${cats.join(', ')}`)
-        if (sn.duration)  parts.push(`Laufzeit: ${sn.duration}`)
-        if (sn.scope) {
-          const scopeMap = { regional: 'Regional', national: 'National (D/AT/CH)', international: 'International / Global' }
-          parts.push(`Geltungsbereich: ${scopeMap[sn.scope] || sn.scope}`)
-        }
+        if (sn.duration) parts.push(`Laufzeit: ${sn.duration}`)
+        if (sn.scope) { const m = { regional: 'Regional', national: 'National', international: 'International' }; parts.push(`Geltungsbereich: ${m[sn.scope] || sn.scope}`) }
         return parts.length ? parts.join(' · ') : 'Werbliche Nutzungsrechte gemäß Vereinbarung'
       }
-
-      // ── designaustria Mode ───────────────────────────────────────────────
-      const THEMA_MAP     = { 1.0: 'Branding/CD', 0.75: 'Produkt-Werbung', 0.5: 'Unternehmenskommunikation' }
-      const BEDEUTUNG_MAP = { 1.0: 'Hauptelement', 0.75: 'Wichtiges Nebenelement', 0.5: 'Untergeordnetes Element' }
-      const GEBIET_MAP    = { 0.5: 'Lokal', 0.75: 'Regional', 1.0: 'National', 1.5: 'Europaweit', 2.0: 'Weltweit' }
-      const ZEITRAUM_MAP  = { 0.75: 'Einmalige Nutzung', 1.0: '1 Jahr', 1.5: 'Dauernutzung / Buyout' }
-      const NUTZUNG_MAP   = { 0: 'Kein Nutzungsrecht', 1.0: 'Zweckgebundenes Werknutzungsrecht', 1.5: 'Werknutzungsrecht ohne Zweckbindung', 3.0: 'Daten-/Bearbeitungsrecht' }
-      const AUFTRAG_MAP   = { 0.75: 'Folgeauftrag', 1.0: 'Rahmenvereinbarung', 1.5: 'Einzelauftrag' }
-
-      const factor = ((ur.thema||1) * (ur.bedeutung||1) * (ur.gebiet||1) * (ur.zeitraum||1) * (ur.nutzungsart||1) * (ur.auftragsart||1)).toFixed(3)
-      const lines = [
-        NUTZUNG_MAP[ur.nutzungsart]   || `Nutzungsart: ${ur.nutzungsart}`,
-        GEBIET_MAP[ur.gebiet]         ? `Geltungsgebiet: ${GEBIET_MAP[ur.gebiet]}` : '',
-        ZEITRAUM_MAP[ur.zeitraum]     ? `Laufzeit: ${ZEITRAUM_MAP[ur.zeitraum]}` : '',
-        THEMA_MAP[ur.thema]           ? `Thema: ${THEMA_MAP[ur.thema]}` : '',
-        BEDEUTUNG_MAP[ur.bedeutung]   ? `Bildstatus: ${BEDEUTUNG_MAP[ur.bedeutung]}` : '',
-        AUFTRAG_MAP[ur.auftragsart]   ? `Auftragsart: ${AUFTRAG_MAP[ur.auftragsart]}` : '',
-        `Kalkulations-Faktor: ${factor} (nach Richtlinien designaustria)`,
-      ].filter(Boolean)
-      return lines.join(' · ')
+      const factor = ((ur.thema||1)*(ur.bedeutung||1)*(ur.gebiet||1)*(ur.zeitraum||1)*(ur.nutzungsart||1)*(ur.auftragsart||1)).toFixed(3)
+      return `Kalkulations-Faktor: ${factor} (nach Richtlinien designaustria)`
     }
 
-    // Positionen aus Vertrag übernehmen
-    function prefillFromContract() {
-      const f   = contractStore.contractForm
-      const cd  = project.value?.contractData || f
-      const p2  = project.value
-      const occasion = f.occasion || p2?.projectName || ''
-      const isB2B    = cd.clientIsCompany || false
-      const items    = []
+    const invoices = useProjectInvoices(project, store, contractStore, invoiceStore, settingsData, isSmallBusiness, {
+      projectDocuments, refreshDocs, onDocCreated,
+      openPaymentPopupFn: null, // intern wird openPaymentPopup direkt genutzt
+      quoteDoc, buildNRDescription,
+    })
+    const {
+      invoiceDoc, invoicePaid, depositInvoice, finalInvoiceDoc, finalInvoicePaid, allDepositInvoices,
+      billing, billingTotal, shootDone,
+      abrechnungItems, abrechnungKm, abrQuickAddId,
+      abrLineNet, abrSubtotal, abrTaxGroups, abrechnungTotal, abrechnungHasDeposit,
+      mkAbrLine, abrAddFromCatalog, abrAddEmptyLine,
+      prefillFromQuoteDoc, prefillFromContract, addDepositDeductionLine, addKmLine,
+      openDepositInvoice, confirmDepositNo, resetDepositNoAgreement,
+      openBillingInvoice, onFinalInvoiceCreated, onDepositInvoiceCreated,
+      markInvoicePaid, markDepositPaid, markFinalPaid,
+      changeDepositStatus, changeFinalStatus,
+      reviseDepositInvoice, reviseFinalInvoice,
+      cancelInvoice, createCorrection, onCorrectionCreated, changeRelatedDocStatus,
+      manualPopup, manualForm, manualUnits, openManualPopup, saveManualLine,
+      paymentDocId, openPaymentPopup, confirmPayment,
+      handoverDate, handoverTime, handoverNote, doneNetRevenue,
+      saveHandover, clearHandover,
+    } = invoices
 
-      // ── Stunden-Modell ────────────────────────────────────────────────
-      if (f.pricingModel === 'hourly') {
+    // ══════════════════════════════════════════════════════════════════════════
+    // 11. PIPELINE — Navigation, Steps, Dispatcher
+    // ══════════════════════════════════════════════════════════════════════════
+    const pipeline = useProjectPipeline(project, route, contractStore, {
+      customerName, formatDate, heroLive, projectDocuments,
+      quoteDoc, requireConsult, consultation, shootDone,
+    })
+    const { pipelineOpen, workflowSteps, handleStepClick, handlePipelineCall, registerActions } = pipeline
 
-        if (!isB2B) {
-          // Privat: getrennte Felder je Leistung
-          const rateP = cd.hourlyRatePhotoPrivat || settingsData.value?.bookingTerms?.hourlyRatePhotoPrivat || f.hourlyRate || 0
-          const rateV = cd.hourlyRateVideoPrivat || settingsData.value?.bookingTerms?.hourlyRateVideoPrivat || f.hourlyRate || 0
-          const imgP  = cd.imagePricePrivat      || settingsData.value?.bookingTerms?.imagePricePrivat || 0
+    // pipelineOpen sync mit _pipelineOpen (für Anfrage/Quote-Composables)
+    watch(pipelineOpen, v => { _pipelineOpen.value = v })
+    watch(_pipelineOpen, v => { if (pipelineOpen.value !== v) pipelineOpen.value = v })
 
-          if (p2?.fotografie) {
-            const h = cd.estimatedHoursPhoto || f.estimatedHours || 0
-            items.push({ articleId: 'ART-00001', description: occasion || 'Fotografie',
-              detail: h ? `${h} h \u00e0 ${rateP} \u20ac/h` : '',
-              quantity: h || 1, unit: 'Stunde', priceNet: rateP, taxRate: 0 })
-            const imgC = cd.imageCountPrivat || 0
-            if (imgC > 0 && imgP > 0) items.push({ articleId: 'ART-00008',
-              description: `Bildpaket Digital (${imgC} Bilder)`,
-              detail: 'Bearbeitete Digitalfotos in Druckqualit\u00e4t',
-              quantity: imgC, unit: 'Bild', priceNet: imgP, taxRate: 0 })
-          }
-          if (p2?.videografie) {
-            const h = cd.estimatedHoursVideo || (p2?.fotografie ? 0 : f.estimatedHours) || 0
-            items.push({ articleId: 'ART-00003', description: 'Videografie',
-              detail: h ? `${h} h \u00e0 ${rateV} \u20ac/h` : '',
-              quantity: h || 1, unit: 'Stunde', priceNet: rateV, taxRate: 0 })
-          }
-
-        } else {
-          // B2B: Phasen aufgeschl\u00fcsselt
-          const ratePhotoMain  = cd.hourlyRatePhotoB2B   || settingsData.value?.bookingTerms?.hourlyRatePhotoB2B  || 0
-          const ratePhotoSetup = cd.hourlyRatePhotoSetup  || settingsData.value?.bookingTerms?.hourlyRatePhotoSetup || 0
-          const rateVideoMain  = cd.hourlyRateVideoB2B   || settingsData.value?.bookingTerms?.hourlyRateVideoB2B  || 0
-          const rateVideoSetup = cd.hourlyRateVideoSetup  || settingsData.value?.bookingTerms?.hourlyRateVideoSetup || 0
-          const pPhoto = cd.photoPhases || {}
-          const pVideo = cd.videoPhases || {}
-
-          if (p2?.fotografie) {
-            const setupH = (pPhoto.vorbereitung||0) + (pPhoto.abstimmung||0)
-            const mainH  = (pPhoto.shooting||0)    + (pPhoto.bearbeitung||0)
-            if (setupH > 0) items.push({ articleId: 'ART-00010', description: 'Fotografie \u2013 Vorbereitung & Meetings',
-              detail: `${setupH} h \u00e0 ${ratePhotoSetup} \u20ac/h (R\u00fcstzeit)`,
-              quantity: setupH, unit: 'Stunde', priceNet: ratePhotoSetup, taxRate: 0 })
-            if (mainH > 0) items.push({ articleId: 'ART-00002', description: 'Fotografie \u2013 Shooting & Bildbearbeitung',
-              detail: `${mainH} h \u00e0 ${ratePhotoMain} \u20ac/h`,
-              quantity: mainH, unit: 'Stunde', priceNet: ratePhotoMain, taxRate: 0 })
-          }
-          if (p2?.videografie) {
-            const setupH = (pVideo.vorbereitung||0) + (pVideo.abstimmung||0)
-            const mainH  = (pVideo.dreh||0)         + (pVideo.schnitt||0)
-            if (setupH > 0) items.push({ articleId: 'ART-00011', description: 'Videografie \u2013 Vorbereitung & Meetings',
-              detail: `${setupH} h \u00e0 ${rateVideoSetup} \u20ac/h (R\u00fcstzeit)`,
-              quantity: setupH, unit: 'Stunde', priceNet: rateVideoSetup, taxRate: 0 })
-            if (mainH > 0) items.push({ articleId: 'ART-00004', description: 'Videografie \u2013 Dreh & Schnitt',
-              detail: `${mainH} h \u00e0 ${rateVideoMain} \u20ac/h`,
-              quantity: mainH, unit: 'Stunde', priceNet: rateVideoMain, taxRate: 0 })
-          }
-        }
-      }
-
-      // ── Pauschal-Modell ───────────────────────────────────────────────
-      if (f.pricingModel === 'flat' && f.flatRate) {
-        items.push({ articleId: 'ART-00017', description: occasion || 'Pauschale Arbeitsleistung',
-          detail: f.flatRateIncludes || 'Pauschalpreis laut Vertrag',
-          quantity: 1, unit: 'Pauschal', priceNet: f.flatRate, taxRate: 0 })
-      }
-
-      // ── Bildpaket + Video B2B (nur wenn NICHT im Preis enthalten) ───────
-      if (isB2B && !cd.mediaIncluded) {
-        const imgCount = cd.imageCountB2B || f.imageCountB2B || 0
-        const imgPrice = cd.imagePriceB2B || f.imagePriceB2B || 0
-        if (imgCount > 0 && imgPrice > 0) items.push({
-          articleId: 'ART-00007', description: `Bildpaket Digital (${imgCount} Bilder)`,
-          detail: 'Bearbeitete Digitalfotos in Druckqualit\u00e4t',
-          quantity: imgCount, unit: 'Bild', priceNet: imgPrice, taxRate: 0 })
-        const vidCount = cd.videoCount10min || f.videoCount10min || 0
-        const vidPrice = cd.videoPer10min   || f.videoPer10min   || 0
-        if (vidCount > 0 && vidPrice > 0) items.push({
-          articleId: 'ART-00009', description: `Videoproduktion (${vidCount} \u00d7 10 min)`,
-          detail: 'Fertig produziert inkl. Schnitt, Grading, Ton',
-          quantity: vidCount, unit: 'St\u00fcck', priceNet: vidPrice, taxRate: 0 })
-      }
-
-      // ── Nutzungsrechte ────────────────────────────────────────────────
-      const nrSurcharge = cd.usageRightsSurcharge || f.usageRightsSurcharge || 0
-      if (nrSurcharge > 0) {
-        items.push({ articleId: 'ART-00012', description: 'Nutzungsrechte / Lizenz',
-          detail: buildNRDescription(cd),
-          quantity: 1, unit: 'Pauschal', priceNet: nrSurcharge, taxRate: 0 })
-      }
-
-      if (items.length) abrechnungItems.value = items.map(i => mkAbrLine(i))
-    }
-
-    function addDepositDeductionLine() {
-      const paidDeposits = allDepositInvoices.value.filter(d => d.status === 'Bezahlt')
-      if (!paidDeposits.length) return
-      const totalDeposit = paidDeposits.reduce((s, d) => s + (d.total || 0), 0)
-      abrechnungItems.value.push(mkAbrLine({
-        description: 'Abzüglich geleisteter Anzahlung',
-        detail:      paidDeposits.map(d => d.documentNumber).join(', '),
-        quantity:    1,
-        unit:        'Pauschal',
-        priceNet:    -totalDeposit,
-        taxRate:     isSmallBusiness.value ? 0 : 19,
-        _isDepositDeduction: true,
-      }))
-    }
-
-    // Anfahrt als km-Position hinzufügen
-    function addKmLine() {
-      const chargeable = Math.max(0, (abrechnungKm.value.total || 0) - (abrechnungKm.value.free || 0))
-      if (!chargeable || !abrechnungKm.value.rate) return
-      abrechnungItems.value.push(mkAbrLine({
-        description: 'Anfahrt / Fahrtkosten',
-        detail:      `${abrechnungKm.value.total} km gesamt − ${abrechnungKm.value.free} km frei = ${chargeable} km × ${abrechnungKm.value.rate} €/km`,
-        quantity:    chargeable,
-        unit:        'km',
-        priceNet:    abrechnungKm.value.rate,
-        taxRate:     isSmallBusiness.value ? 0 : 19,
-      }))
-      abrechnungKm.value = { total: 0, free: abrechnungKm.value.free, rate: abrechnungKm.value.rate }
-    }
-
-    // Legacy billing ref (kept for billingTotal compat if referenced elsewhere)
-    const billing = ref({
-      hours:         null,
-      hourlyRate:    null,
-      km:            0,
-      kmFree:        0,
-      kmRate:        0.30,
-      deductDeposit: false,
-      extras:        [],
+    // ── Pipeline-Dispatcher Actions registrieren ──────────────────────────────
+    registerActions({
+      saveAnfrageForm, onHeroLive,
+      saveConsultation, openSidebarEdit,
+      onInlineQuoteCreated, openQuoteFromProject, openQuoteRevise,
+      changeQuoteStatus, printQuote, downloadQuote,
+      openDocPrint, formatChangelogVal,
+      saveContractData, saveContractStatus, saveAddendum, setAddendumStatus,
+      uploadSignedContract, calcAutoSurcharge,
+      openContractForm, openContractPrint, printContract, downloadContract,
+      openAddendumPrint, printAddendum, downloadAddendum,
+      deleteAddendum, uploadSignedAddendum, deleteSignedContract, openAdvPrint,
+      openDepositInvoice, reviseDepositInvoice, reviseFinalInvoice,
+      changeDepositStatus, confirmDepositNo, resetDepositNoAgreement, markDepositPaid,
+      cancelInvoice, createCorrection, onCorrectionCreated, changeRelatedDocStatus,
+      openManualPopup, refreshDocs,
+      openBillingInvoice, onFinalInvoiceCreated, onDepositInvoiceCreated, changeFinalStatus,
+      saveHandover, clearHandover, markFinalPaid,
     })
 
-    // Computed helpers
-    const shootDone = computed(() => {
-      if (!project.value?.booking) return false
-      return new Date(project.value.booking) < new Date()
-    })
-
-    const quoteDoc = computed(() => {
-      // Angebote für diesen Auftrag, ohne Unter-Typen
-      const quotes = projectDocuments.value.filter(d => d.type === 'quote' && !d.docSubtype)
-      if (!quotes.length) return null
-      // Bevorzuge angenommenes Angebot
-      const accepted = quotes.find(d => d.status === 'Angenommen')
-      if (accepted) return accepted
-      // Sonst: aktives Angebot (nicht durch Revision ersetzt)
-      return quotes.find(d => !d.supersededBy) || quotes[quotes.length - 1]
-    })
-
-    // ALL quote versions for this project (sorted newest first)
-    const allProjectQuotes = computed(() =>
-      [...projectDocuments.value]
-        .filter(d => d.type === 'quote' && !d.docSubtype)
-        .sort((a, b) => {
-          // Primary: version descending (newest version first)
-          const vDiff = (b.version || 1) - (a.version || 1)
-          if (vDiff !== 0) return vDiff
-          // Tiebreaker: createdAt descending
-          return new Date(b.createdAt || 0) - new Date(a.createdAt || 0)
-        })
-    )
-
-    // Anfrage sperren sobald erstes Angebot versendet/abgeschlossen wurde
-    const anfrageLocked = computed(() =>
-      quoteStore.allProjectQuotes.some(q =>
-        ['Versendet','Angenommen','Abgelehnt','Ersetzt'].includes(q.status)
-      )
-    )
-
-    // reviseQuote modal state
-
-    function openQuoteRevise(doc) {
-      quoteStore.quoteReviseDoc  = doc
-      quoteStore.quoteReviseMode = true
-      quoteStore.quoteFormOpen   = true
-      pipelineOpen.value    = 'angebot'
-    }
-
-    // 📂 PDF erzeugen → im Projektordner speichern → im System-Viewer öffnen
-    async function openPdfInViewer(apiPath) {
-      if (window.pixframe?.generateAndOpenPDF) {
-        try {
-          await window.pixframe.generateAndOpenPDF(apiPath)
-        } catch (e) {
-          console.error('[PDF] Öffnen fehlgeschlagen:', e)
-          // Fallback: im Browser öffnen
-          const printPath = apiPath.replace(/^\/api\/pdf\//, '/print/')
-          window.open(printPath, '_blank')
-        }
-      } else {
-        // Kein Electron — Fallback: im Browser öffnen
-        const printPath = apiPath.replace(/^\/api\/pdf\//, '/print/')
-        window.open(printPath, '_blank')
-      }
-    }
-
-    // ── Angebot öffnen: Status → Versendet, dann PDF im Viewer öffnen ──
-    async function printQuote(qv) {
-      if (!['Versendet','Angenommen','Abgelehnt','Ersetzt'].includes(qv.status)) {
-        try {
-          await store.setDocumentStatus(qv.id, 'Versendet')
-          await saveAnfrageSnapshot()
-          await refreshDocs()
-        } catch (e) { console.error('printQuote Status-Fehler:', e) }
-      }
-      openPdfInViewer('/api/pdf/document/' + qv.id)
-    }
-
-    // ── Angebot öffnen (Alias) ──
-    async function downloadQuote(qv) {
-      if (!['Versendet','Angenommen','Abgelehnt','Ersetzt'].includes(qv.status)) {
-        try {
-          await store.setDocumentStatus(qv.id, 'Versendet')
-          await saveAnfrageSnapshot()
-          await refreshDocs()
-        } catch (e) { console.error('downloadQuote Status-Fehler:', e) }
-      }
-      openPdfInViewer('/api/pdf/document/' + qv.id)
-    }
-
-    function openQuoteFromProject() {
-      quoteStore.quoteReviseDoc     = null
-      quoteStore.quoteReviseMode    = false
-      quoteStore.quotePrefillItems  = quotePrefillItems.value  // ← Positionen aus Anfrage
-      quoteStore.quoteFormOpen      = true
-      pipelineOpen.value = 'angebot'
-    }
-
-    async function onInlineQuoteCreated(doc) {
-      await refreshDocs()
-      quoteStore.quoteReviseDoc    = null
-      quoteStore.quoteReviseMode   = false
-      quoteStore.quotePrefillItems = null
-      quoteStore.quoteFormOpen     = false
-      await nextTick()
-      const qoMain = document.querySelector('.qo-main')
-      if (qoMain) qoMain.scrollTop = 0
-    }
-
-    // quotePrefillItems: Leistungsumfang aus der Anfrage als Angebotszeilen vorbelegen
-    const quotePrefillItems = computed(() => {
-      const p = project.value
-      if (!p) return null
-      const cd = p.contractData || {}
-      const isSmall = settingsData.value?.company?.smallBusiness || false
-      const taxRate = isSmall ? 0 : 19
-      const isB2B   = cd.clientIsCompany || false
-      const occasion = cd.occasion || p.projectName || ''
-      const items = []
-
-      // ── Stunden-Modell ────────────────────────────────────────────────
-      if (cd.pricingModel === 'hourly') {
-
-        if (isB2B) {
-          // B2B: Phasen aufschlüsseln wenn Stunden vorhanden
-          const pPhoto = cd.photoPhases || {}
-          const pVideo = cd.videoPhases || {}
-          const ratePhotoMain  = cd.hourlyRatePhotoB2B   || settingsData.value?.bookingTerms?.hourlyRatePhotoB2B  || 0
-          const ratePhotoSetup = cd.hourlyRatePhotoSetup || settingsData.value?.bookingTerms?.hourlyRatePhotoSetup || 0
-          const rateVideoMain  = cd.hourlyRateVideoB2B   || settingsData.value?.bookingTerms?.hourlyRateVideoB2B  || 0
-          const rateVideoSetup = cd.hourlyRateVideoSetup || settingsData.value?.bookingTerms?.hourlyRateVideoSetup || 0
-
-          if (p.fotografie) {
-            const setupH = (pPhoto.vorbereitung||0) + (pPhoto.abstimmung||0)
-            const mainH  = (pPhoto.shooting||0)    + (pPhoto.bearbeitung||0)
-            if (setupH > 0) items.push({
-              articleId: 'ART-00010',
-              description: 'Fotografie – Vorbereitung & Meetings',
-              detail: `${setupH} h à ${ratePhotoSetup} €/h (Rüstzeit)`,
-              quantity: setupH, unit: 'Stunde', priceNet: ratePhotoSetup, taxRate,
-            })
-            if (mainH > 0) items.push({
-              articleId: 'ART-00002',
-              description: 'Fotografie – Shooting & Bildbearbeitung',
-              detail: `${mainH} h à ${ratePhotoMain} €/h`,
-              quantity: mainH, unit: 'Stunde', priceNet: ratePhotoMain, taxRate,
-            })
-          }
-          if (p.videografie) {
-            const setupH = (pVideo.vorbereitung||0) + (pVideo.abstimmung||0)
-            const mainH  = (pVideo.dreh||0)         + (pVideo.schnitt||0)
-            if (setupH > 0) items.push({
-              articleId: 'ART-00011',
-              description: 'Videografie – Vorbereitung & Meetings',
-              detail: `${setupH} h à ${rateVideoSetup} €/h (Rüstzeit)`,
-              quantity: setupH, unit: 'Stunde', priceNet: rateVideoSetup, taxRate,
-            })
-            if (mainH > 0) items.push({
-              articleId: 'ART-00004',
-              description: 'Videografie – Dreh & Schnitt',
-              detail: `${mainH} h à ${rateVideoMain} €/h`,
-              quantity: mainH, unit: 'Stunde', priceNet: rateVideoMain, taxRate,
-            })
-          }
-        } else {
-          // Privat: getrennte Felder je Leistung
-          const ratePhotoPriv = cd.hourlyRatePhotoPrivat || settingsData.value?.bookingTerms?.hourlyRatePhotoPrivat || cd.hourlyRate || 0
-          const rateVideoPriv = cd.hourlyRateVideoPrivat || settingsData.value?.bookingTerms?.hourlyRateVideoPrivat || cd.hourlyRate || 0
-          const imgPricePriv  = cd.imagePricePrivat      || settingsData.value?.bookingTerms?.imagePricePrivat      || 0
-
-          if (p.fotografie) {
-            const h = cd.estimatedHoursPhoto || cd.estimatedHours || 0
-            if (h > 0 || ratePhotoPriv > 0) items.push({
-              articleId: 'ART-00001',
-              description: 'Fotografie',
-              detail: h ? `${h} h à ${ratePhotoPriv} €/h` : '',
-              quantity: h || 1, unit: 'Stunde', priceNet: ratePhotoPriv, taxRate,
-            })
-            // Bildpaket Privat
-            const imgC = cd.imageCountPrivat || 0
-            if (imgC > 0 && imgPricePriv > 0) items.push({
-              articleId: 'ART-00008',
-              description: `Bildpaket Digital (${imgC} Bilder)`,
-              detail: 'Bearbeitete Digitalfotos in Druckqualität',
-              quantity: imgC, unit: 'Bild', priceNet: imgPricePriv, taxRate,
-            })
-          }
-          if (p.videografie) {
-            const h = cd.estimatedHoursVideo || (p.fotografie ? 0 : cd.estimatedHours) || 0
-            if (h > 0 || rateVideoPriv > 0) items.push({
-              articleId: 'ART-00003',
-              description: 'Videografie',
-              detail: h ? `${h} h à ${rateVideoPriv} €/h` : '',
-              quantity: h || 1, unit: 'Stunde', priceNet: rateVideoPriv, taxRate,
-            })
-          }
-        }
-      }
-
-      // ── Pauschal-Modell ───────────────────────────────────────────────
-      if (cd.pricingModel === 'flat') {
-        if (cd.flatRate) items.push({
-          articleId: 'ART-00017',
-          description: occasion || 'Pauschale Arbeitsleistung',
-          detail: cd.flatRateIncludes || 'Pauschalpreis laut Vereinbarung',
-          quantity: 1, unit: 'Pauschal', priceNet: cd.flatRate, taxRate,
-        })
-      }
-
-      // ── Bildpaket (B2B) — nur wenn NICHT im Preis enthalten ────────────
-      const imgCount = cd.imageCountB2B || 0
-      const imgPrice = cd.imagePriceB2B || settingsData.value?.bookingTerms?.imagePriceB2B || 0
-      if (isB2B && !cd.mediaIncluded && imgCount > 0 && imgPrice > 0) {
-        items.push({
-          articleId: 'ART-00007',
-          description: `Bildpaket Digital (${imgCount} Bilder)`,
-          detail: 'Bearbeitete Digitalfotos in Druckqualität',
-          quantity: imgCount, unit: 'Bild', priceNet: imgPrice, taxRate,
-        })
-      }
-
-      // ── Videoproduktion (B2B) — nur wenn NICHT im Preis enthalten ────────
-      const vidCount = cd.videoCount10min || 0
-      const vidPrice = cd.videoPer10min   || settingsData.value?.bookingTerms?.videoPer10min || 0
-      if (isB2B && !cd.mediaIncluded && vidCount > 0 && vidPrice > 0) {
-        items.push({
-          articleId: 'ART-00009',
-          description: `Videoproduktion (${vidCount} × 10 min)`,
-          detail: 'Fertig produziert inkl. Schnitt, Grading, Ton',
-          quantity: vidCount, unit: 'Stück', priceNet: vidPrice, taxRate,
-        })
-      }
-
-      // ── Nutzungsrechte (B2B) ─────────────────────────────────────────
-      const nrSurcharge = cd.usageRightsSurcharge || 0
-      if (isB2B && nrSurcharge > 0) {
-        items.push({
-          articleId: 'ART-00012',
-          description: 'Nutzungsrechte / Lizenz',
-          detail: buildNRDescription(cd),
-          quantity: 1, unit: 'Pauschal', priceNet: nrSurcharge, taxRate,
-        })
-      }
-
-      // ── Privat-Extras ─────────────────────────────────────────────────
-      if (!isB2B) {
-        if (p.glueckwunschkarten) items.push({
-          description: 'Danksagungskarten-Design', detail: '',
-          quantity: 1, unit: 'Pauschal', priceNet: 0, taxRate,
-        })
-        if (p.gettingReadyEr || p.gettingReadySie || p.gettingReadyBeide) {
-          const who = [
-            p.gettingReadySie   && 'Braut',
-            p.gettingReadyEr    && 'Bräutigam',
-            p.gettingReadyBeide && 'Beide',
-          ].filter(Boolean).join(' & ')
-          items.push({
-            description: 'Getting Ready', detail: who,
-            quantity: 1, unit: 'Pauschal', priceNet: 0, taxRate,
-          })
-        }
-      }
-
-      return items.length ? items : null
-    })
-
-    // ── Angebot-Status Bestätigung ──────────────────────────────────────────
-
-    async function saveAnfrageSnapshot() {
-      if (!project.value || project.value.anfrageSnapshot) return
-      const snap = {
-        booking:           project.value.booking,
-        bookingTime:       project.value.bookingTime,
-        location:          project.value.location,
-        locations:         project.value.locations || [],
-        skipQuote:         project.value.skipQuote ?? true,  // default: kein Angebot
-        category:          project.value.category,
-        notes:             project.value.notes,
-        projectName:       project.value.projectName,
-        fotografie:        project.value.fotografie,
-        videografie:       project.value.videografie,
-        glueckwunschkarten: project.value.glueckwunschkarten,
-        gettingReadyEr:    project.value.gettingReadyEr,
-        gettingReadySie:   project.value.gettingReadySie,
-        gettingReadyBeide: project.value.gettingReadyBeide,
-        contractData:      { ...contractStore.contractForm },
-        inquiryDate:       project.value.inquiryDate,
-        status:            project.value.status,
-      }
-      await store.updateProject(project.value.id, { anfrageSnapshot: snap })
-      project.value.anfrageSnapshot = snap
-    }
-
-    function changeQuoteStatus(doc, newStatus) {
-      if (!newStatus || newStatus === doc.status) return
-      if (!['Angenommen', 'Abgelehnt'].includes(newStatus)) {
-        // Entwurf / Versendet: direkt setzen, ggf. Snapshot speichern
-        if (newStatus === 'Versendet') saveAnfrageSnapshot()
-        store.setDocumentStatus(doc.id, newStatus).then(() => refreshDocs()).catch(console.error)
-        return
-      }
-      // Finale Status: Bestätigungs-Popup
-      quoteStore.quoteStatusConfirm = {
-        show:         true,
-        doc,
-        newStatus,
-        variant:      newStatus === 'Angenommen' ? 'success' : 'danger',
-        title:        newStatus === 'Angenommen'
-                        ? `Angebot ${doc.documentNumber} annehmen?`
-                        : `Angebot ${doc.documentNumber} ablehnen?`,
-        sub:          newStatus === 'Angenommen'
-                        ? 'Der Auftrag gilt damit als vom Kunden bestätigt. Du kannst anschließend mit Vertrag und Anzahlung fortfahren.'
-                        : 'Das Angebot wird als abgelehnt markiert. Du kannst danach eine neue Version erstellen.',
-        confirmLabel: newStatus === 'Angenommen' ? '✅ Ja, annehmen' : '❌ Ja, ablehnen',
-      }
-    }
-
-    async function confirmQuoteStatusChange() {
-      const { doc, newStatus } = quoteStore.quoteStatusConfirm
-      quoteStore.quoteStatusConfirm.show = false
-      await saveAnfrageSnapshot()
-      try {
-        await store.setDocumentStatus(doc.id, newStatus)
-        await refreshDocs()
-      } catch(e) { console.error('Status-Änderung fehlgeschlagen:', e) }
-    }
-
-        async function markQuoteAccepted(doc) {
-      if (!doc) return
-      try {
-        await store.setDocumentStatus(doc.id, 'Angenommen')
-        await refreshDocs()
-      } catch(e) { console.error(e) }
-    }
-
-    const invoiceDoc = computed(() =>
-      projectDocuments.value.find(d => d.type === 'invoice' && !d.docSubtype) || null
-    )
-
-    const invoicePaid = computed(() =>
-      invoiceDoc.value?.status === 'Bezahlt'
-    )
-
-    // ── Deposit & Final invoice computed ────────────────────────────────
-    const allDepositInvoices = computed(() =>
-      projectDocuments.value
-        .filter(d => d.type === 'invoice' && !d.docSubtype && !d.correctionOf && d.isDeposit)
-        .sort((a, b) => new Date(b.createdAt || b.issueDate) - new Date(a.createdAt || a.issueDate))
-    )
-    const depositInvoice = computed(() => allDepositInvoices.value[0] || null)
-    const finalInvoiceDoc = computed(() =>
-      projectDocuments.value.find(d => d.type === 'invoice' && !d.docSubtype && !d.correctionOf && !d.isDeposit) || null
-    )
-    const finalInvoicePaid = computed(() =>
-      finalInvoiceDoc.value?.status === 'Bezahlt'
-    )
-
-    // billingTotal kept for any legacy template refs — maps to abrechnungTotal
-    const billingTotal = computed(() => abrechnungTotal.value)
-
-    // ── Abschluss-Panel: Abgabe + Statistik ──────────────────────────────────
-    const handoverDate = ref('')
-    const handoverTime = ref('')
-    const handoverNote = ref('')
-
-    // Gesamteinnahmen: Summe aller bezahlten Rechnungen
-    const doneNetRevenue = computed(() => {
-      const paid = projectDocuments.value
-        .filter(d => d.type === 'invoice' && !d.docSubtype && !d.correctionOf && d.status === 'Bezahlt')
-      return paid.reduce((s, d) => s + (Number(d.total) || 0), 0)
-    })
-
-    async function saveHandover(date, time, note) {
-      // Accepts params from sub-component or falls back to local refs
-      const d = date !== undefined ? date : handoverDate.value
-      const t = time !== undefined ? time : handoverTime.value
-      const n = note !== undefined ? note : handoverNote.value
-      if (!d) return
-      // Sync local refs if called from sub-component
-      if (date !== undefined) {
-        handoverDate.value = d
-        handoverTime.value = t
-        handoverNote.value = n
-      }
-      const dt  = d + (t ? 'T' + t : 'T00:00')
-      const iso = new Date(dt).toISOString()
-      await store.updateProject(project.value.id, {
-        handoverAt:   iso,
-        handoverNote: n || ''
-      })
-      await refreshDocs()
-    }
-
-    async function clearHandover() {
-      await store.updateProject(project.value.id, { handoverAt: null, handoverNote: '' })
-      handoverDate.value = ''
-      handoverTime.value = ''
-      handoverNote.value = ''
-      await refreshDocs()
-    }
-
-    function handleStepClick(stepId) {
-      // Aktiven Tab anklicken tut nichts — Panel bleibt offen
-      if (pipelineOpen.value !== stepId) {
-        pipelineOpen.value = stepId
-      }
-    }
-
-    const workflowSteps = computed(() => {
-      const p = project.value
-      const docs        = projectDocuments.value
-      const invoices    = docs.filter(d => d.type === 'invoice' && !d.docSubtype && !d.correctionOf)
-      const depInv      = invoices.filter(d => d.isDeposit)
-      const finalInv    = invoices.filter(d => !d.isDeposit)
-
-      const hasBooking    = !!p?.booking
-      const quoteAccepted = quoteDoc.value?.status === 'Angenommen'
-      const hasSigned     = contractStore.contractStatus === 'Unterschrieben'
-      // Angebot-Step gilt als "erledigt" wenn angenommen ODER wenn man schon weiter ist (Vertrag unterschrieben)
-      const quoteStepDone = p?.skipQuote || quoteAccepted || hasSigned
-
-      const depositPaid   = depInv.some(d => d.status === 'Bezahlt')
-      const afterShoot    = shootDone.value
-      const hasFinal      = finalInv.length > 0
-      const finalPaid     = finalInv.some(d => d.status === 'Bezahlt')
-
-      const consultRequired   = requireConsult.value
-      const consultDone       = consultation.value.clientAccepted === true
-      const consultDeclined   = consultation.value.clientAccepted === false
-      const consultDoneOrSkip = consultDone || !consultRequired
-
-      const steps = []
-      steps.push({
-        id:      'anfrage',
-        icon:    '📥',
-        label:   'Anfrage',
-        hint:    customerName.value || 'Kundendaten',
-        done:    hasBooking && !!p?.category,
-        current: !hasBooking || !p?.category,
-      })
-
-      // Vorgespräch: nur sichtbar wenn in settings aktiviert ODER manuell für diesen Auftrag gesetzt
-      if (consultRequired) {
-        steps.push({
-          id:      'vorgespräch',
-          icon:    consultDeclined ? '❌' : '💬',
-          label:   'Vorgespräch',
-          hint:    consultDeclined
-                    ? 'Abgelehnt'
-                    : consultDone
-                      ? (consultation.value.date ? new Date(consultation.value.date).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'2-digit'}) : 'Angenommen')
-                      : consultation.value.date
-                        ? 'Termin ' + new Date(consultation.value.date).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit'})
-                        : 'ausstehend',
-          done:    consultDone,
-          current: hasBooking && !!p?.category && !consultDone && !consultDeclined,
-          declined: consultDeclined,
-        })
-      }
-
-      // Angebot nur anzeigen wenn nicht explizit übersprungen
-      if (!p?.skipQuote) {
-        steps.push({
-          id:      'angebot',
-          icon:    '📋',
-          label:   'Angebot',
-          hint:    quoteAccepted
-                    ? (quoteDoc.value?.documentNumber || 'Angenommen')
-                    : quoteDoc.value
-                      ? quoteDoc.value.status
-                      : 'optional',
-          done:    quoteStepDone,
-          current: consultDoneOrSkip && hasBooking && !!p?.category && !quoteStepDone,
-        })
-      }
-
-      steps.push({
-          id:      'vertrag',
-          icon:    '📝',
-          label:   'Vertrag',
-          hint:    hasSigned
-                    ? (p?.contractNumber || 'Unterschrieben')
-                    : contractStore.contractStatus || 'Entwurf',
-          done:    hasSigned,
-          current: quoteStepDone && !hasSigned,
-        })
-      steps.push({
-          id:      'anzahlung',
-          icon:    '💶',
-          label:   'Anzahlung',
-          hint:    depositPaid
-                    ? 'Bezahlt → Aktiv'
-                    : depInv.length > 0
-                      ? (depInv[0].documentNumber || 'Offen')
-                      : 'ausstehend',
-          done:    depositPaid,
-          current: hasSigned && !depositPaid,
-        })
-      steps.push({
-          id:      'auftrag',
-          icon:    '📸',
-          label:   'Bearbeitung',
-          comingSoon: true,
-          hint:    afterShoot ? 'Erledigt' : hasBooking ? formatDate(p.booking) : '—',
-          done:    afterShoot,
-          current: depositPaid && !afterShoot,
-        })
-      steps.push({
-          id:      'abrechnung',
-          icon:    '🧾',
-          label:   'Abrechnung',
-          hint:    hasFinal
-                    ? (finalInv[0].documentNumber || 'Erstellt')
-                    : 'Schlussrechnung',
-          done:    hasFinal,
-          current: afterShoot && !hasFinal,
-        })
-      steps.push({
-          id:      'done',
-          icon:    '✅',
-          label:   'Abschluss',
-          hint:    finalPaid ? 'Bezahlt' : hasFinal ? 'Zahlung offen' : '—',
-          done:    finalPaid,
-          current: hasFinal && !finalPaid,
-        })
-      return steps
-    })
-
-        function openBillingInvoice() {
-      // ── 1. Leistungspositionen: bevorzuge Angebot, Fallback Vertrag/Anfrage ──
-      const baseItems = []
-
-      if (quoteDoc.value?.lineItems?.length) {
-        // Aus angenommenem Angebot übernehmen
-        quoteDoc.value.lineItems.forEach(i => baseItems.push({
-          ...i,
-          taxRate: isSmallBusiness.value ? 0 : (i.taxRate ?? 19),
-        }))
-      } else {
-        // Fallback: aus Vertrag/Anfrage aufbauen
-        const f  = contractStore.contractForm
-        const cd = project.value?.contractData || f
-        const p2 = project.value
-        const occasion = f.occasion || p2?.projectName || ''
-        const isB2B    = cd.clientIsCompany || false
-        const taxRate  = isSmallBusiness.value ? 0 : 19
-
-        if (f.pricingModel === 'hourly') {
-          if (!isB2B) {
-            const rateP = cd.hourlyRatePhotoPrivat || settingsData.value?.bookingTerms?.hourlyRatePhotoPrivat || f.hourlyRate || 0
-            const rateV = cd.hourlyRateVideoPrivat || settingsData.value?.bookingTerms?.hourlyRateVideoPrivat || f.hourlyRate || 0
-            if (p2?.fotografie) {
-              const h = cd.estimatedHoursPhoto || f.estimatedHours || 0
-              if (h > 0) baseItems.push({ articleId: 'ART-00001', description: occasion || 'Fotografie',
-                detail: `${h} h à ${rateP} €/h`, quantity: h, unit: 'Stunde', priceNet: rateP, taxRate })
-            }
-            if (p2?.videografie) {
-              const h = cd.estimatedHoursVideo || (p2?.fotografie ? 0 : f.estimatedHours) || 0
-              if (h > 0) baseItems.push({ articleId: 'ART-00003', description: 'Videografie',
-                detail: `${h} h à ${rateV} €/h`, quantity: h, unit: 'Stunde', priceNet: rateV, taxRate })
-            }
-          } else {
-            const ratePhotoMain  = cd.hourlyRatePhotoB2B   || settingsData.value?.bookingTerms?.hourlyRatePhotoB2B  || 0
-            const ratePhotoSetup = cd.hourlyRatePhotoSetup  || settingsData.value?.bookingTerms?.hourlyRatePhotoSetup || 0
-            const rateVideoMain  = cd.hourlyRateVideoB2B   || settingsData.value?.bookingTerms?.hourlyRateVideoB2B  || 0
-            const rateVideoSetup = cd.hourlyRateVideoSetup  || settingsData.value?.bookingTerms?.hourlyRateVideoSetup || 0
-            const pPhoto = cd.photoPhases || {}; const pVideo = cd.videoPhases || {}
-            if (p2?.fotografie) {
-              const sH = (pPhoto.vorbereitung||0)+(pPhoto.abstimmung||0)
-              const mH = (pPhoto.shooting||0)+(pPhoto.bearbeitung||0)
-              if (sH > 0) baseItems.push({ articleId: 'ART-00010', description: 'Fotografie – Vorbereitung & Meetings',
-                detail: `${sH} h à ${ratePhotoSetup} €/h`, quantity: sH, unit: 'Stunde', priceNet: ratePhotoSetup, taxRate })
-              if (mH > 0) baseItems.push({ articleId: 'ART-00002', description: 'Fotografie – Shooting & Bildbearbeitung',
-                detail: `${mH} h à ${ratePhotoMain} €/h`, quantity: mH, unit: 'Stunde', priceNet: ratePhotoMain, taxRate })
-            }
-            if (p2?.videografie) {
-              const sH = (pVideo.vorbereitung||0)+(pVideo.abstimmung||0)
-              const mH = (pVideo.dreh||0)+(pVideo.schnitt||0)
-              if (sH > 0) baseItems.push({ articleId: 'ART-00011', description: 'Videografie – Vorbereitung & Meetings',
-                detail: `${sH} h à ${rateVideoSetup} €/h`, quantity: sH, unit: 'Stunde', priceNet: rateVideoSetup, taxRate })
-              if (mH > 0) baseItems.push({ articleId: 'ART-00004', description: 'Videografie – Dreh & Schnitt',
-                detail: `${mH} h à ${rateVideoMain} €/h`, quantity: mH, unit: 'Stunde', priceNet: rateVideoMain, taxRate })
-            }
-          }
-        } else if (f.pricingModel === 'flat' && f.flatRate) {
-          baseItems.push({ articleId: 'ART-00017', description: occasion || 'Pauschale Arbeitsleistung',
-            detail: f.flatRateIncludes || 'Pauschalpreis laut Vereinbarung',
-            quantity: 1, unit: 'Pauschal', priceNet: cd.flatRate || f.flatRate, taxRate })
-        }
-        if (isB2B && !cd.mediaIncluded) {
-          const imgCount = cd.imageCountB2B || 0; const imgPrice = cd.imagePriceB2B || 0
-          if (imgCount > 0 && imgPrice > 0) baseItems.push({ articleId: 'ART-00007',
-            description: `Bildpaket Digital (${imgCount} Bilder)`,
-            detail: 'Bearbeitete Digitalfotos in Druckqualität',
-            quantity: imgCount, unit: 'Bild', priceNet: imgPrice, taxRate })
-          const vidCount = cd.videoCount10min || 0; const vidPrice = cd.videoPer10min || 0
-          if (vidCount > 0 && vidPrice > 0) baseItems.push({ articleId: 'ART-00009',
-            description: `Videoproduktion (${vidCount} × 10 min)`,
-            detail: 'Fertig produziert inkl. Schnitt, Grading, Ton',
-            quantity: vidCount, unit: 'Stück', priceNet: vidPrice, taxRate })
-        }
-        const nrSurcharge = cd.usageRightsSurcharge || f.usageRightsSurcharge || 0
-        if (nrSurcharge > 0) baseItems.push({ articleId: 'ART-00012',
-          description: 'Nutzungsrechte / Lizenz', detail: buildNRDescription(cd),
-          quantity: 1, unit: 'Pauschal', priceNet: nrSurcharge, taxRate })
-      }
-
-      // ── 2. Anzahlungsabzug: alle bezahlten Anzahlungsrechnungen ────────────
-      const paidDeposits = allDepositInvoices.value.filter(d => d.status === 'Bezahlt')
-      if (paidDeposits.length) {
-        const totalDep = paidDeposits.reduce((s, d) => s + (d.total || 0), 0)
-        const depNrs   = paidDeposits.map(d => d.documentNumber).filter(Boolean).join(', ')
-        const depTaxR  = isSmallBusiness.value ? 0 : (paidDeposits[0]?.lineItems?.[0]?.taxRate ?? 19)
-        baseItems.push({
-          articleId:   null,
-          description: `Abzüglich geleisteter Anzahlung`,
-          detail:      depNrs ? `Rechnung(en): ${depNrs}` : '',
-          quantity:    1,
-          unit:        'Pauschal',
-          priceNet:    -Math.abs(totalDep),
-          taxRate:     depTaxR,
-          discount:    0,
-          _isDepositDeduction: true,
-        })
-      }
-
-      invoiceStore.invoicePrefillItems = baseItems.length ? baseItems : null
-      invoiceStore.finalFormOpen = true
-    }
-
-    async function onFinalInvoiceCreated(doc) {
-      onDocCreated(doc)
-      await refreshDocs()
-      await nextTick()
-      invoiceStore.finalFormOpen      = false
-      invoiceStore.invoicePrefillItems = null
-      // Scroll-Position im qo-main zurücksetzen
-      const qoMain = document.querySelector('.qo-main')
-      if (qoMain) qoMain.scrollTop = 0
-    }
-
-    async function reviseDepositInvoice(inv) {
-      // Neue Version einer Entwurfsrechnung — nur im Entwurfsstatus
-      if (inv.status !== 'Entwurf') return
-      try {
-        await store.reviseDocument(inv.id, {})
-        await refreshDocs()
-      } catch (e) { console.error('Revision fehlgeschlagen:', e) }
-    }
-
-    async function reviseFinalInvoice(inv) {
-      if (inv.status !== 'Entwurf') return
-      try {
-        await store.reviseDocument(inv.id, {})
-        await refreshDocs()
-      } catch (e) { console.error('Revision fehlgeschlagen:', e) }
-    }
-
-    async function onDepositInvoiceCreated(doc) {
-      onDocCreated(doc)
-      await refreshDocs()
-      await nextTick()
-      invoiceStore.depositFormOpen     = false
-      invoiceStore.invoicePrefillItems = null
-      invoiceStore.depositManualItem   = null
-      const qoMain = document.querySelector('.qo-main')
-      if (qoMain) qoMain.scrollTop = 0
-    }
-
-    async function markInvoicePaid() {
-      if (!invoiceDoc.value) return
-      try {
-        await store.setDocumentStatus(invoiceDoc.value.id, 'Bezahlt')
-        await refreshDocs()
-      } catch (e) { console.error(e) }
-    }
-
-    async function markDepositPaid() {
-      if (!depositInvoice.value) return
-      openPaymentPopup(depositInvoice.value.id, depositInvoice.value.documentNumber || 'Anzahlungsrechnung')
-    }
-
-    async function changeDepositStatus(doc, newStatus) {
-      if (!newStatus || newStatus === doc.status) return
-      if (newStatus === 'Bezahlt') {
-        openPaymentPopup(doc.id, doc.documentNumber || 'Anzahlungsrechnung')
-        return
-      }
-      try {
-        await store.setDocumentStatus(doc.id, newStatus)
-        await refreshDocs()
-      } catch (e) { console.error(e) }
-    }
-
-    async function changeFinalStatus(doc, newStatus) {
-      if (!newStatus || newStatus === doc.status) return
-      if (newStatus === 'Bezahlt') {
-        openPaymentPopup(doc.id, doc.documentNumber || 'Schlussrechnung')
-        return
-      }
-      try {
-        await store.setDocumentStatus(doc.id, newStatus)
-        await refreshDocs()
-      } catch (e) { console.error(e) }
-    }
-
-    async function markFinalPaid() {
-      if (!finalInvoiceDoc.value) return
-      openPaymentPopup(finalInvoiceDoc.value.id, finalInvoiceDoc.value.documentNumber || 'Schlussrechnung')
-    }
-
-
-
-    // ── Reaktive Sync: lokale State → pdStore (für Sub-Komponenten) ──────────
+    // ══════════════════════════════════════════════════════════════════════════
+    // STORE-SYNC WATCHERS
+    // ══════════════════════════════════════════════════════════════════════════
     watch(anfrageFormData, val => { pdStore.anfrageFormData = val }, { immediate: true })
     watch(anfrageFormSaving, val => { pdStore.anfrageFormSaving = val })
     watch(anfrageLocked, val => { pdStore.anfrageLocked = val })
@@ -2873,20 +1163,15 @@ export default {
     watch(finalInvoicePaid, val => { pdStore.finalInvoicePaid = val })
     watch(doneNetRevenue, val => { pdStore.doneNetRevenue = val })
     watch(projectDocuments, val => { pdStore.projectDocuments = val }, { deep: true })
-    // Project ID sync
-    watch(project, val => {
-      if (val) pdStore.projectId = val.id
-    }, { immediate: true })
+    watch(project, val => { if (val) pdStore.projectId = val.id }, { immediate: true })
 
+    // ══════════════════════════════════════════════════════════════════════════
+    // onMounted — Init-Logik
+    // ══════════════════════════════════════════════════════════════════════════
     onMounted(async () => {
       loading.value = true
       try {
-        // Wenn das Projekt bereits im Store ist (z.B. von Dashboard geladen):
-        // nur die fehlenden Ressourcen nachladen – kein erneutes fetchProjects().
-        // Das verhindert die Race-Condition wo projects.value durch ein neues
-        // Array ersetzt wird und project.value kurz null ist.
         const alreadyLoaded = project.value !== null
-
         if (alreadyLoaded) {
           await Promise.all([
             store.customers.length === 0 ? store.fetchCustomers() : Promise.resolve(),
@@ -2894,16 +1179,12 @@ export default {
             loadSettings(),
           ])
         } else {
-          // Kaltstart / direkter URL-Aufruf – alles laden
           await Promise.all([store.fetchProjects(), store.fetchCustomers(), loadSettings(), store.fetchArticles()])
-          if (!project.value) {
-            await store.fetchProjectById(route.params.id)
-          }
+          if (!project.value) await store.fetchProjectById(route.params.id)
         }
-
         try {
-          const docs = await store.fetchDocumentsByProject(route.params.id)
-          projectDocuments.value = docs || []
+          const fetchedDocs = await store.fetchDocumentsByProject(route.params.id)
+          projectDocuments.value = fetchedDocs || []
         } catch (e) { console.error(e) }
       } catch (e) {
         console.error('[ProjectDetail] Fehler beim Laden:', e)
@@ -2911,7 +1192,6 @@ export default {
         await nextTick()
         loading.value = false
       }
-
 
       // Pre-fill contract form from project data
       if (project.value?.contractData) {
@@ -2925,25 +1205,19 @@ export default {
           flatRate:              cd.flatRate              != null ? cd.flatRate : null,
           flatRateIncludes:      cd.flatRateIncludes      || '',
           customPriceText:       cd.customPriceText       || '',
-          depositAmount: cd.depositAmount != null
-            ? cd.depositAmount
-            : calcAutoDeposit(p.budget?.estimatedAmount),
+          depositAmount: cd.depositAmount != null ? cd.depositAmount : calcAutoDeposit(p.budget?.estimatedAmount),
           paymentDueDays:        cd.paymentDueDays        != null ? cd.paymentDueDays : 14,
           deliveryWeeks:         cd.deliveryWeeks         || '4–8',
           publicationPermission: cd.publicationPermission || 'conditional',
           additionalNotes:       cd.additionalNotes       || '',
           clientIsCompany:       cd.clientIsCompany       || false,
-          // Leistungen: aus contractData wenn vorhanden, sonst Vorbelegung aus Anfrage
-          fotografie:         cd.fotografie         != null ? cd.fotografie         : (p.fotografie         || false),
-          videografie:        cd.videografie        != null ? cd.videografie        : (p.videografie        || false),
+          fotografie:         cd.fotografie         != null ? cd.fotografie         : (p.fotografie || false),
+          videografie:        cd.videografie        != null ? cd.videografie        : (p.videografie || false),
           glueckwunschkarten: cd.glueckwunschkarten != null ? cd.glueckwunschkarten : (p.glueckwunschkarten || false),
-          gettingReadyEr:     cd.gettingReadyEr     != null ? cd.gettingReadyEr     : (p.gettingReadyEr     || false),
-          gettingReadySie:    cd.gettingReadySie    != null ? cd.gettingReadySie    : (p.gettingReadySie    || false),
-          gettingReadyBeide:  cd.gettingReadyBeide  != null ? cd.gettingReadyBeide  : (p.gettingReadyBeide  || false),
-          // Nutzungsart
-          usageType: cd.usageType && cd.usageType !== 'private'
-            ? cd.usageType
-            : (cd.clientIsCompany ? 'commercial' : 'private'),
+          gettingReadyEr:     cd.gettingReadyEr     != null ? cd.gettingReadyEr     : (p.gettingReadyEr || false),
+          gettingReadySie:    cd.gettingReadySie    != null ? cd.gettingReadySie    : (p.gettingReadySie || false),
+          gettingReadyBeide:  cd.gettingReadyBeide  != null ? cd.gettingReadyBeide  : (p.gettingReadyBeide || false),
+          usageType: cd.usageType && cd.usageType !== 'private' ? cd.usageType : (cd.clientIsCompany ? 'commercial' : 'private'),
           commercialPurpose:     cd.commercialPurpose     || '',
           usageLicenseDuration:  cd.usageLicenseDuration  || 'unbegrenzt',
           usageLicenseScope:     cd.usageLicenseScope     || 'national',
@@ -2953,7 +1227,6 @@ export default {
           customSpecialClauses:  cd.customSpecialClauses  || '',
         }
       } else {
-        // Noch kein Vertrag — Leistungen aus Anfrage vorbelegen
         const p = project.value
         if (p) {
           contractStore.contractForm.fotografie         = p.fotografie         || false
@@ -2963,534 +1236,125 @@ export default {
           contractStore.contractForm.gettingReadySie    = p.gettingReadySie    || false
           contractStore.contractForm.gettingReadyBeide  = p.gettingReadyBeide  || false
         }
-        if (p?.budget?.estimatedAmount) {
-          contractStore.contractForm.depositAmount = calcAutoDeposit(p.budget.estimatedAmount)
+        if (project.value?.budget?.estimatedAmount) {
+          contractStore.contractForm.depositAmount = calcAutoDeposit(project.value.budget.estimatedAmount)
         }
       }
-      // Prefill hourlyRate in contractForm from settings if not set
+
       if (!contractStore.contractForm.hourlyRate && settingsData.value?.bookingTerms?.defaultHourlyRate) {
         contractStore.contractForm.hourlyRate = settingsData.value.bookingTerms.defaultHourlyRate
       }
-      // Load Changelog
+
       auftragChangelog.value = project.value?.auftragChangelog || []
-      // Load Projektnotizen
-      projectNotes.value = project.value?.projectNotes || []
-      // Load Anzahlung-Vereinbarung
+      projectNotes.value     = project.value?.projectNotes || []
       invoiceStore.depositNoAgreement = project.value?.depositNoAgreement || false
-      // Load Generierungs-Versionen
       contractStore.contractGeneratedVersions = project.value?.contractGeneratedVersions || []
-      // contractCreated flag — only set by saveContractData, never by saveAnfrageForm
-      // Load Changelog
-      auftragChangelog.value = project.value?.auftragChangelog || []
 
-
-      // ── Sync neue Stores mit geladenem State ──────────────────
       if (project.value) {
-        // ProjectDetailStore
         pdStore.projectId         = project.value.id
         pdStore.projectDocuments  = projectDocuments.value
         pdStore.auftragChangelog  = auftragChangelog.value
         pdStore.projectNotes      = projectNotes.value
         pdStore.settingsData      = settingsData.value
-        // Anfrage + Vorgespräch
         pdStore.anfrageFormData   = anfrageFormData.value
         pdStore.anfrageFormSaving = anfrageFormSaving.value
         pdStore.anfrageLocked     = anfrageLocked.value
         pdStore.consultation      = consultation.value
         pdStore.consultSaving     = consultSaving.value
         pdStore.requireConsult    = requireConsult.value
-        // Changelog
         pdStore.showChangelogModal = showChangelogModal.value
-        // Abschluss
         pdStore.handoverDate      = handoverDate.value
         pdStore.handoverTime      = handoverTime.value
         pdStore.handoverNote      = handoverNote.value
         pdStore.finalInvoicePaid  = finalInvoicePaid.value
         pdStore.doneNetRevenue    = doneNetRevenue.value
-        // ContractStore
         contractStore.loadFromProject(project.value, settingsData.value)
-        // InvoiceStore
         invoiceStore.loadFromDocs(projectDocuments.value)
-        // QuoteStore
         quoteStore.loadFromDocs(projectDocuments.value)
 
-        // Auto-open current pipeline step (unless ?new=1 already set it)
-        // Skip 'auftrag' (Bearbeitung — in Entwicklung, kein vollständiges Panel)
         if (!route.query.new) {
           const currentStep = workflowSteps.value.find(s => s.current && s.id !== 'auftrag')
           if (currentStep) pipelineOpen.value = currentStep.id
         }
       }
 
-      // Load signed contracts + contract status + addenda
-      // Prefill billing defaults from settings
-      if (settingsData.value?.bookingTerms) {
-        const bt = settingsData.value.bookingTerms
-        if (bt.defaultHourlyRate != null) billing.value.hourlyRate = bt.defaultHourlyRate
-        if (bt.defaultKmRate     != null) billing.value.kmRate     = bt.defaultKmRate
-        if (bt.defaultKmFree     != null) billing.value.kmFree     = bt.defaultKmFree
-        // Prefill Abrechnung km defaults too
-        if (bt.defaultKmRate != null) abrechnungKm.value.rate = bt.defaultKmRate
-        if (bt.defaultKmFree != null) abrechnungKm.value.free = bt.defaultKmFree
-      }
-            contractStore.signedContracts  = project.value?.signedContracts  || []
+      contractStore.signedContracts  = project.value?.signedContracts  || []
       contractStore.contractStatus   = project.value?.contractStatus   || 'Entwurf'
       contractStore.contractAddenda  = project.value?.contractAddenda  || []
-      // Load consultation
+
       if (project.value?.consultation) {
         consultation.value.date           = project.value.consultation.date           || ''
         consultation.value.notes          = project.value.consultation.notes          || ''
         consultation.value.clientAccepted = project.value.consultation.clientAccepted ?? null
       }
-    })
 
-    // ── Sidebar Edit Modal ────────────────────────────────────────────────────
-    // ── Auftrags-Änderungsprotokoll ──────────────────────────────────────────
-    const auftragChangelog = ref([])
-
-    const auftragChangelogSorted = computed(() =>
-      [...auftragChangelog.value].sort((a, b) => new Date(b.ts) - new Date(a.ts))
-    )
-
-    const showChangelogModal = ref(false)
-
-    // Changelog nach Datum gruppieren (neueste Gruppe zuerst)
-    const changelogGrouped = computed(() => {
-      const groups = {}
-      for (const entry of auftragChangelogSorted.value) {
-        const d = new Date(entry.ts)
-        const label = d.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })
-        if (!groups[label]) groups[label] = []
-        groups[label].push(entry)
-      }
-      return groups
-    })
-
-    function formatDateTime(iso) {
-      if (!iso) return '—'
-      return new Date(iso).toLocaleString('de-DE', {
-        day: '2-digit', month: '2-digit', year: 'numeric',
-        hour: '2-digit', minute: '2-digit'
-      })
-    }
-
-    function formatTime(iso) {
-      if (!iso) return ''
-      return new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
-    }
-
-    function formatChangelogVal(val) {
-      if (!val && val !== 0) return '—'
-      // If looks like a date, format it
-      if (/^\d{4}-\d{2}-\d{2}$/.test(String(val))) {
-        return new Date(val).toLocaleDateString('de-DE')
-      }
-      return String(val)
-    }
-
-        // Kategorie → auto-Anlass (dieselbe Logik wie NewProjectForm)
-    const DE_MONTHS_EDIT = ['Januar','Februar','März','April','Mai','Juni',
-                             'Juli','August','September','Oktober','November','Dezember']
-
-    function buildAutoOccasion(category, bookingIso) {
-      if (!category || !bookingIso) return ''
-      const d    = new Date(bookingIso)
-      const date = `${d.getDate()}. ${DE_MONTHS_EDIT[d.getMonth()]} ${d.getFullYear()}`
-      const map  = {
-        'Hochzeit':          `Hochzeit am ${date}`,
-        'Portrait':          `Portrait-Shooting am ${date}`,
-        'Babybauch':         `Babybauch-Shooting am ${date}`,
-        'Newborn':           `Newborn-Shooting am ${date}`,
-        'Event':             `Event am ${date}`,
-        'Produktfotografie': `Produktfotografie am ${date}`,
-        'Familienshooting':  `Familien-Shooting am ${date}`,
-        'Businessfotografie':`Business-Fotografie am ${date}`,
-        'Sonstiges':         `Fotografie am ${date}`,
-      }
-      return map[category] || `${category} am ${date}`
-    }
-
-    const sidebarEdit = reactive({
-      show: false, saving: false,
-      occasionAutoSet: true,
-      form: {
-        occasion: '', booking: '', bookingTime: '', location: '', category: '',
-        notes: '', pricingModel: 'flat', hourlyRate: null, estimatedHours: null,
-        flatRate: null, depositAmount: null, paymentDueDays: 14,
+      if (settingsData.value?.bookingTerms) {
+        const bt = settingsData.value.bookingTerms
+        if (bt.defaultHourlyRate != null) billing.value.hourlyRate = bt.defaultHourlyRate
+        if (bt.defaultKmRate     != null) billing.value.kmRate     = bt.defaultKmRate
+        if (bt.defaultKmFree     != null) billing.value.kmFree     = bt.defaultKmFree
+        if (bt.defaultKmRate != null) abrechnungKm.value.rate = bt.defaultKmRate
+        if (bt.defaultKmFree != null) abrechnungKm.value.free = bt.defaultKmFree
       }
     })
 
-    // Watch: Kategorie ändert sich → Anlass automatisch aktualisieren
-    watch(() => sidebarEdit.form.category, (newCat) => {
-      if (sidebarEdit.occasionAutoSet) {
-        sidebarEdit.form.occasion = buildAutoOccasion(newCat, sidebarEdit.form.booking)
-      }
-    })
-    watch(() => sidebarEdit.form.booking, (newDate) => {
-      if (sidebarEdit.occasionAutoSet) {
-        sidebarEdit.form.occasion = buildAutoOccasion(sidebarEdit.form.category, newDate)
-      }
-    })
-
-    function openSidebarEdit() {
-      const p = project.value
-      const cd = p.contractData || contractStore.contractForm || {}
-      sidebarEdit.occasionAutoSet = true
-      sidebarEdit.form = {
-        occasion:       cd.occasion || p.projectName || '',
-        booking:        (p.booking || '').slice(0, 10),
-        bookingTime:    p.bookingTime || '',
-        bookingLabel:   p.bookingLabel || '',
-        shootingDates:  Array.isArray(p.shootingDates) ? JSON.parse(JSON.stringify(p.shootingDates)) : [],
-        location:       p.location || '',
-        locations:      Array.isArray(p.locations) ? p.locations : [],
-        skipQuote:      p.skipQuote ?? true,  // default: kein Angebot
-        category:       p.category || '',
-        notes:          p.notes || '',
-        pricingModel:   cd.pricingModel || 'flat',
-        hourlyRate:     cd.hourlyRate || null,
-        estimatedHours: cd.estimatedHours || null,
-        flatRate:       cd.flatRate || null,
-        depositAmount:  cd.depositAmount || null,
-        paymentDueDays: cd.paymentDueDays || 14,
-      }
-      sidebarEdit.show = true
-    }
-
-    // Hilfsfunktion: Ändernungen gegenüber aktuellem Projekt-Stand ermitteln
-    function buildChangelogEntries(f, newContractData) {
-      const p   = project.value
-      const cd  = p.contractData || {}
-      const now = new Date().toISOString()
-      const entries = []
-
-      function entry(label, oldVal, newVal) {
-        if (String(oldVal ?? '') !== String(newVal ?? '') && (oldVal || newVal)) {
-          entries.push({ ts: now, label, from: oldVal ?? '', to: newVal ?? '' })
-        }
-      }
-
-      entry('Anlass',         cd.occasion || p.projectName,    f.occasion)
-      entry('Kategorie',      p.category,                       f.category)
-      entry('Buchungsdatum',  p.booking?.slice(0,10),           f.booking)
-      entry('Uhrzeit',        p.bookingTime,                    f.bookingTime)
-      entry('Location',       p.location,                       f.location)
-      entry('Locations',      JSON.stringify(p.locations),        JSON.stringify(f.locations))
-      entry('Angebot skip',   p.skipQuote,                        f.skipQuote)
-      entry('Notizen',        p.notes,                          f.notes)
-      entry('Preismodell',    cd.pricingModel,                  f.pricingModel)
-      entry('Stundensatz',    cd.hourlyRate,                    f.hourlyRate)
-      entry('Est. Stunden',   cd.estimatedHours,                f.estimatedHours)
-      entry('Pauschalpreis',  cd.flatRate,                      f.flatRate)
-      entry('Anzahlung',      cd.depositAmount,                 f.depositAmount)
-      entry('Zahlungsziel',   cd.paymentDueDays,                f.paymentDueDays)
-      return entries
-    }
-
-    async function saveSidebarEdit() {
-      sidebarEdit.saving = true
-      try {
-        const f = sidebarEdit.form
-        const newContractData = {
-          ...(project.value.contractData || {}),
-          ...contractStore.contractForm,
-          occasion:       f.occasion,
-          pricingModel:   f.pricingModel,
-          hourlyRate:     f.hourlyRate,
-          estimatedHours: f.estimatedHours,
-          flatRate:       f.flatRate,
-          depositAmount:  f.depositAmount,
-          paymentDueDays: f.paymentDueDays,
-        }
-
-        // Build changelog before saving
-        const newEntries = buildChangelogEntries(f, newContractData)
-        const existingLog = project.value.auftragChangelog || []
-        const updatedChangelog = newEntries.length
-          ? [...existingLog, ...newEntries]
-          : existingLog
-
-        await store.updateProject(project.value.id, {
-          projectName:      f.occasion || project.value.projectName,
-          booking:          f.booking,
-          bookingTime:      f.bookingTime,
-          bookingLabel:     f.bookingLabel || '',
-          shootingDates:    f.shootingDates || [],
-          location:         f.location,
-          locations:        f.locations || [],
-          skipQuote:        f.skipQuote ?? true,  // default: kein Angebot
-          category:         f.category,
-          notes:            f.notes,
-          contractData:     newContractData,
-          auftragChangelog: updatedChangelog,
-        })
-        // Sofort reaktiv aktualisieren — kein Reload nötig
-        auftragChangelog.value = updatedChangelog
-        Object.assign(contractStore.contractForm, newContractData)
-        sidebarEdit.show = false
-      } catch(e) { console.error('Sidebar save failed:', e) }
-      finally { sidebarEdit.saving = false }
-    }
-
-
-    // ── Vertrag: Generierungs-Versionen ─────────────────────────────────────────
-
-        // ── Anzahlung: Vereinbarungsstatus ──────────────────────────────────────────
-
-        // ── Dokumente Modal ────────────────────────────────────────────────────────
-    const docsModal = ref(false)
-
-        // ── Projektnotizen ───────────────────────────────────────────────────────
-    const projectNotes    = ref([])
-    const notesModal      = ref(false)
-    const noteSaving      = ref(false)
-    const noteEditing     = ref(null)
-    const noteEditText    = ref('')
-    const noteCompose     = reactive({ open: false, text: '', createdAt: '' })
-
-    const projectNotesSorted = computed(() =>
-      [...projectNotes.value].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-    )
-
-    function openNoteCompose() {
-      noteCompose.createdAt = new Date().toISOString()
-      noteCompose.text = ''
-      noteCompose.open = true
-    }
-
-    async function saveNewNote() {
-      if (!noteCompose.text.trim()) return
-      noteSaving.value = true
-      try {
-        const note = {
-          id:        `pn_${Date.now()}`,
-          text:      noteCompose.text.trim(),
-          createdAt: noteCompose.createdAt,
-          updatedAt: noteCompose.createdAt,
-        }
-        projectNotes.value = [note, ...projectNotes.value]
-        await store.updateProject(project.value.id, { projectNotes: projectNotes.value })
-        noteCompose.open = false
-        noteCompose.text = ''
-      } catch(e) { console.error('Notiz speichern:', e) }
-      finally { noteSaving.value = false }
-    }
-
-    function startEditNote(note) {
-      noteEditing.value = note.id
-      noteEditText.value = note.text
-    }
-
-    async function saveEditNote(id) {
-      if (!noteEditText.value.trim()) return
-      noteSaving.value = true
-      try {
-        const idx = projectNotes.value.findIndex(n => n.id === id)
-        if (idx !== -1) {
-          projectNotes.value[idx] = {
-            ...projectNotes.value[idx],
-            text:      noteEditText.value.trim(),
-            updatedAt: new Date().toISOString(),
-          }
-          await store.updateProject(project.value.id, { projectNotes: projectNotes.value })
-        }
-        noteEditing.value = null
-      } catch(e) { console.error('Notiz bearbeiten:', e) }
-      finally { noteSaving.value = false }
-    }
-
-    async function deleteNote(id) {
-      if (!confirm('Notiz löschen?')) return
-      projectNotes.value = projectNotes.value.filter(n => n.id !== id)
-      await store.updateProject(project.value.id, { projectNotes: projectNotes.value })
-    }
-
-
-    // ══ Manuell-Popup (Positionserfassung) ══════════════════════════════════
-    const manualPopup = ref(false)
-    const manualTarget = ref(null)   // 'deposit' | 'final' | null
-    const manualForm = ref({ description:'', detail:'', quantity:1, unit:'Pauschal', priceNet:0, taxRate:19, discount:0 })
-    const manualUnits = ['Pauschal','Stunden','Tage','km','Seiten','Fotos','Stück','Lizenz','Monat']
-
-    function openManualPopup(target) {
-      manualTarget.value = target
-      manualForm.value   = { description:'', detail:'', quantity:1, unit:'Pauschal', priceNet:0, taxRate:19, discount:0 }
-      manualPopup.value  = true
-    }
-
-    function saveManualLine() {
-      if (!manualForm.value.description.trim()) return
-      const item = { ...manualForm.value, _key: Date.now(), articleId: null }
-      // Inject into the right form via a ref-based event system
-      // We emit through a shared ref that QIM watches
-      if (manualTarget.value === 'deposit') {
-        invoiceStore.depositManualItem = item
-      } else {
-        invoiceStore.finalManualItem = item
-      }
-      manualPopup.value = false
-    }
-
-
-    // ══ Zahlungseingang-Popup ════════════════════════════════════════════════
-    const paymentDocId     = ref(null)
-
-    function openPaymentPopup(docId, label) {
-      paymentDocId.value    = docId
-      invoiceStore.paymentDocLabel = label
-      invoiceStore.paymentForm     = {
-        paidAt:        new Date().toISOString().slice(0,10),
-        paymentMethod: '',
-      }
-      invoiceStore.paymentError  = ''
-      invoiceStore.paymentPopup  = true
-    }
-
-    async function confirmPayment() {
-      if (!invoiceStore.paymentForm.paidAt)         { invoiceStore.paymentError = 'Bitte Zahlungsdatum angeben.';   return }
-      if (!invoiceStore.paymentForm.paymentMethod)  { invoiceStore.paymentError = 'Bitte Zahlungsart auswählen.';   return }
-      invoiceStore.paymentSaving = true; invoiceStore.paymentError = ''
-      try {
-        const paymentData = {
-          paidAt:        invoiceStore.paymentForm.paidAt,
-          paymentMethod: invoiceStore.paymentForm.paymentMethod,
-        }
-        await store.setDocumentStatus(paymentDocId.value, 'Bezahlt', paymentData)
-
-        // Wenn eine Korrekturrechnung bezahlt wird → Ursprungsrechnung ebenfalls bezahlt markieren
-        const paidDoc = store.documents.find(d => d.id === paymentDocId.value)
-        if (paidDoc?.docSubtype === 'correction' && paidDoc?.correctionOf) {
-          await store.setDocumentStatus(paidDoc.correctionOf, 'Bezahlt', paymentData)
-        }
-
-        await refreshDocs()
-        invoiceStore.paymentPopup = false
-      } catch (e) {
-        invoiceStore.paymentError = e.message || 'Fehler beim Speichern.'
-      } finally { invoiceStore.paymentSaving = false }
-    }
-
-    // ── Pipeline-Komponenten: Action-Handler ─────────────────────────────────
-    async function handlePipelineCall(fnName, args = []) {
-      const fns = {
-        // Anfrage
-        saveAnfrageForm, onHeroLive,
-        // Vorgespräch
-        saveConsultation, openSidebarEdit,
-        // Angebot
-        onInlineQuoteCreated, openQuoteFromProject, openQuoteRevise,
-        changeQuoteStatus, printQuote, downloadQuote,
-        openDocPrint, formatChangelogVal,
-        // Vertrag
-        saveContractData,
-        saveContractStatus,
-        saveAddendum,
-        setAddendumStatus,
-        uploadSignedContract,
-        calcAutoSurcharge,
-        openContractForm, openContractPrint, printContract, downloadContract,
-        openAddendumPrint, printAddendum, downloadAddendum,
-        deleteAddendum, uploadSignedAddendum, deleteSignedContract, openAdvPrint,
-        // Anzahlung
-        openDepositInvoice, reviseDepositInvoice, reviseFinalInvoice, changeDepositStatus, confirmDepositNo, resetDepositNoAgreement, markDepositPaid,
-        cancelInvoice, createCorrection, onCorrectionCreated, changeRelatedDocStatus,
-        openManualPopup, refreshDocs,
-        // Abrechnung
-        openBillingInvoice, onFinalInvoiceCreated, onDepositInvoiceCreated, changeFinalStatus,
-        // Abschluss
-        saveHandover, clearHandover, markFinalPaid,
-      }
-      const fn = fns[fnName]
-      if (fn) await fn(...args)
-      else console.warn('[ProjectDetail] Unknown pipeline action:', fnName)
-    }
-
-
-    async function saveAnfrageForm({ project: pData, contractData }) {
-      anfrageFormSaving.value = true
-      try {
-        const updatedPData = {
-          ...pData,
-          projectName: contractData?.occasion?.trim() || pData.projectName || project.value.projectName,
-        }
-        await store.updateProject(project.value.id, updatedPData)
-        await store.updateProject(project.value.id, { contractData })
-        Object.assign(contractStore.contractForm, contractData)
-        const savedProject = store.projects.find(pr => pr.id === project.value.id)
-        if (savedProject) {
-          contractStore.contractForm.fotografie         = savedProject.fotografie         || false
-          contractStore.contractForm.videografie        = savedProject.videografie        || false
-          contractStore.contractForm.glueckwunschkarten = savedProject.glueckwunschkarten || false
-          contractStore.contractForm.gettingReadyEr     = savedProject.gettingReadyEr     || false
-          contractStore.contractForm.gettingReadySie    = savedProject.gettingReadySie    || false
-          contractStore.contractForm.gettingReadyBeide  = savedProject.gettingReadyBeide  || false
-        }
-        const rawNotes = pData.notes?.trim()
-        if (rawNotes) {
-          const note = {
-            id:        `pn_${Date.now()}`,
-            text:      rawNotes,
-            source:    'anfrage',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          }
-          const updatedNotes = [...(projectNotes.value || []).filter(n => n.source !== 'anfrage'), note]
-          projectNotes.value = updatedNotes
-          await store.updateProject(project.value.id, { projectNotes: updatedNotes })
-        }
-        // Angebot-Tab nur öffnen wenn explizit gewünscht (skipQuote === false)
-        if (requireConsult.value) {
-          pipelineOpen.value = 'vorgespräch'
-        } else if (!project.value?.skipQuote) {
-          pipelineOpen.value = 'angebot'
-        } else {
-          pipelineOpen.value = 'vertrag'
-        }
-      } catch (e) { console.error(e) } finally { anfrageFormSaving.value = false }
-    }
-
+    // ══════════════════════════════════════════════════════════════════════════
+    // RETURN — alle Template-Bindings
+    // ══════════════════════════════════════════════════════════════════════════
     return {
-      project, customer, customerName, goBack, openProjectFolder, loading, heroLive, onHeroLive,
-      projectDocuments, anyService, hasGettingReady,
-      formatDate, formatCurrency, isExpired, typeLabel, stdDocPrintUrl, isStdDoc, openDocOrStd, openDocPrint, openDocDownload, downloadZugferdFromDoc, downloadDoc, openPrintView,
-      detailDocId, detailDocObj, openDocDetail, refreshDocs, autoUpdateProjectStatus, store,
-      editModal, editSaving, editError, editForm, editing,
-      saveInlineEdit, cancelInlineEdit, onDocCreated, onInlineQuoteCreated, invoiceModal, quotePrefillItems,
-      categories, statusOptions, openEditModal, saveEdit,
-      handlePipelineCall, contractStatusClass, contractLocked, saveContractStatus,
-      allProjectDocs, saveAddendum, deleteAddendum, setAddendumStatus, contractHasData, openContractForm,
-      openContractPrint, openAdvPrint, openAddendumPrint, printAddendum, downloadAddendum,
-      printContract, downloadContract,
-      saveContractData, uploadSignedContract, deleteSignedContract,
-      uploadSignedAddendum, deleteSignedAddendum,
+      project, customer, customerName, goBack, openProjectFolder, loading, store,
       settingsData, calcAutoDeposit, calcAutoSurcharge, contractBase,
-      fmtFileSize, fmtDate, pipelineOpen, billing, workflowSteps, handleStepClick, handoverDate, handoverTime, handoverNote, saveHandover, clearHandover, doneNetRevenue, billingTotal, shootDone,
-      abrechnungItems, abrechnungKm, abrQuickAddId, isSmallBusiness, activeArticles, enabledPaymentMethods,
-      abrLineNet, abrSubtotal, abrTaxGroups, abrechnungTotal, abrechnungHasDeposit,
-      abrAddFromCatalog, abrAddEmptyLine, mkAbrLine,
-      prefillFromQuoteDoc, prefillFromContract, addDepositDeductionLine, addKmLine,
-      anfrageFormData, anfrageFormSaving, saveAnfrageForm, anfrageLocked,
-      consultation, consultSaving, requireConsult, saveConsultation,
-      quoteDoc, allProjectQuotes, openQuoteRevise, openQuoteFromProject, markQuoteAccepted, changeQuoteStatus,
-      printQuote, downloadQuote,
-      auftragChangelog, auftragChangelogSorted, changelogGrouped, showChangelogModal, formatChangelogVal, formatTime,
-
-      docsModal,
+      isSmallBusiness, activeArticles, enabledPaymentMethods, categories, statusOptions,
+      API_BASE,
+      formatDate, formatCurrency, formatDateTime, formatTime, formatChangelogVal,
+      isExpired, typeLabel, fmtFileSize, fmtDate, anyService, hasGettingReady,
+      photoLightbox, photoUploading, photoError, onPhotoSelect, onPhotoDrop, removeCustomerPhoto,
       projectNotes, projectNotesSorted, notesModal, noteSaving,
       noteEditing, noteEditText, noteCompose,
       openNoteCompose, saveNewNote, startEditNote, saveEditNote, deleteNote,
-      formatDateTime,
+      editing, editModal, editSaving, editError, editForm,
+      startInlineEdit, cancelInlineEdit, saveInlineEdit, openEditModal, saveEdit,
+      heroLive, onHeroLive,
+      auftragChangelog, auftragChangelogSorted, changelogGrouped, showChangelogModal,
       sidebarEdit, openSidebarEdit, saveSidebarEdit,
-      quoteStatusConfirm, confirmQuoteStatusChange,
-      invoiceDoc, invoicePaid, confirmDepositNo,
-      depositInvoice, finalInvoiceDoc, finalInvoicePaid, depositNextInvoice,
-      allDepositInvoices, invoicePrefillItems, openBillingInvoice, onFinalInvoiceCreated, openDepositInvoice, changeDepositStatus, changeFinalStatus, markInvoicePaid, markDepositPaid, markFinalPaid,
+      contractLocked, contractStatusClass, contractHasData,
+      openContractForm, saveContractData, saveContractStatus,
+      saveAddendum, deleteAddendum, setAddendumStatus,
+      uploadSignedContract, deleteSignedContract,
+      uploadSignedAddendum, deleteSignedAddendum,
+      openContractPrint, printContract, downloadContract,
+      openAdvPrint, openAddendumPrint, printAddendum, downloadAddendum,
+      projectDocuments, docsModal, detailDocId, detailDocObj, allProjectDocs,
+      refreshDocs, onDocCreated, autoUpdateProjectStatus, openDocDetail,
+      openDocOrStd, openDocPrint, openDocDownload, openPrintView,
+      downloadDoc, downloadZugferdFromDoc, isStdDoc, stdDocPrintUrl,
+      anfrageFormData, anfrageFormSaving, anfrageLocked,
+      saveAnfrageForm, saveAnfrageSnapshot,
+      consultation, consultSaving, requireConsult, saveConsultation,
+      quoteDoc, allProjectQuotes, quotePrefillItems,
+      changeQuoteStatus, confirmQuoteStatusChange, markQuoteAccepted,
+      printQuote, downloadQuote,
+      openQuoteFromProject, openQuoteRevise, onInlineQuoteCreated,
+      invoiceDoc, invoicePaid, depositInvoice, finalInvoiceDoc, finalInvoicePaid, allDepositInvoices,
+      billing, billingTotal, shootDone,
+      abrechnungItems, abrechnungKm, abrQuickAddId,
+      abrLineNet, abrSubtotal, abrTaxGroups, abrechnungTotal, abrechnungHasDeposit,
+      mkAbrLine, abrAddFromCatalog, abrAddEmptyLine,
+      prefillFromQuoteDoc, prefillFromContract, addDepositDeductionLine, addKmLine,
+      openDepositInvoice, confirmDepositNo, resetDepositNoAgreement,
+      openBillingInvoice, onFinalInvoiceCreated, onDepositInvoiceCreated,
+      markInvoicePaid, markDepositPaid, markFinalPaid,
+      changeDepositStatus, changeFinalStatus,
+      reviseDepositInvoice, reviseFinalInvoice,
+      cancelInvoice, createCorrection, onCorrectionCreated, changeRelatedDocStatus,
       manualPopup, manualForm, manualUnits, openManualPopup, saveManualLine,
-      paymentPopup, paymentDocLabel, paymentForm, paymentSaving, paymentError, openPaymentPopup, confirmPayment,
-      // Kundenfoto
-      photoLightbox, photoUploading, photoError, onPhotoSelect, onPhotoDrop, removeCustomerPhoto
+      paymentDocId, openPaymentPopup, confirmPayment,
+      handoverDate, handoverTime, handoverNote, doneNetRevenue, saveHandover, clearHandover,
+      pipelineOpen, workflowSteps, handleStepClick, handlePipelineCall,
+      invoiceModal, quoteStatusConfirm, depositNextInvoice, invoicePrefillItems,
+      paymentPopup, paymentDocLabel, paymentForm, paymentSaving, paymentError,
     }
-  }
+  },
 }
 </script>
 
